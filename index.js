@@ -70,8 +70,10 @@ add('object', formatObject);
 
 add('array', function(value, opts) {
   var keys = opts.keys(value);
-  var numericProps = [];
   var len = 0;
+
+  opts.seen.push(value);
+
   var props = keys.map(function(prop) {
     var desc;
     try {
@@ -89,6 +91,10 @@ add('array', function(value, opts) {
     len += f.length;
     return f;
   });
+
+  opts.seen.pop();
+
+  if(props.length === 0) return '[]';
 
   if(len <= opts.maxLineLength) {
     return '[ ' + props.join(opts.propSep + ' ') + ' ]';
@@ -113,6 +119,9 @@ function formatObject(value, opts, prefix, props) {
     return f;
   });
   opts.seen.pop();
+
+  if(props.length === 0) return '{}';
+
   if(len <= opts.maxLineLength) {
     return '{ ' + (prefix ? prefix + ' ' : '') + props.join(opts.propSep + ' ') + ' }';
   } else {
