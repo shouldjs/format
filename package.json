@@ -3,6 +3,10 @@
   "version": "0.0.4",
   "description": "Formatting of objects for should.js",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/shouldjs/format.git"
+  },
   "scripts": {
     "test": "mocha -R mocha-better-spec-reporter tests/test.js",
     "browserify": "rm tests/browser/tests.js && browserify tests/test.js >> tests/browser/tests.js"
