@@ -1,0 +1,13 @@
+{
+  "env": {
+    "browser": true,
+    "node": true
+  },
+
+  "rules": {
+    "strict": false,
+    "quotes": false,
+    "curly": false,
+    "eqeqeq": false
+  }
+}

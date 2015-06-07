@@ -1,5 +1,6 @@
-var format = require('../');
 var assert = require('assert');
+
+var format = require('../');
 
 it('should format numbers', function() {
   assert.equal(format(10), '10');
@@ -143,6 +144,11 @@ it('should format typed arrays', function() {
     int8[1] = 0x2;
     assert.equal(format(int8), '[Int8Array: 20 02 00]');
 
+    var int16 = new Int16Array(3);
+    int16[0] = 0x201;
+    int16[1] = 0x2;
+    assert.equal(format(int16), '[Int16Array: 0201 0002 0000]');
+
     //var dataView = new DataView(buffer);
     //assert.equal(format(dataView), '[DataView: 00 20 02 00 00 00 00 00]');
   }
@@ -162,4 +168,22 @@ it('should format html elements', function() {
 
 it('should correctly indent', function() {
   assert.equal(format({ a: { b: 'abc' }, d: 'abc'}, { maxLineLength: 0 }), '{\n  a: {\n    b: \'abc\'\n  },\n  d: \'abc\'\n}')
+});
+
+it('should format set', function() {
+  if(typeof Set !== 'undefined') {
+    assert.equal(format(new Set([1, 2, { a: 10}, 'abc'])),
+      '{ [Set] 1, 2, { a: 10 }, \'abc\' }');
+    assert.equal(format(new Set([1, 2, { a: 10}, 'abc']), { maxLineLength: 0 }),
+      '{\n  [Set]\n  1,\n  2,\n  {\n    a: 10\n  },\n  \'abc\'\n}');
+  }
+});
+
+it('should format map', function() {
+  if(typeof Map !== 'undefined') {
+    assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]])),
+      '{ [Map] 1 => 2, 2 => \'abc\', { a: 10 } => { [Set] }, \'abc\' => null }');
+    assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]]), { maxLineLength: 10 }),
+      '{\n  [Map]\n  1 => 2,\n  2 => \'abc\',\n  { a: 10 } =>\n  { [Set] },\n  \'abc\' =>\n  null\n}');
+  }
 });
