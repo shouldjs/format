@@ -8,6 +8,7 @@
     "strict": false,
     "quotes": false,
     "curly": false,
-    "eqeqeq": false
+    "eqeqeq": false,
+    "no-underscore-dangle": false
   }
 }

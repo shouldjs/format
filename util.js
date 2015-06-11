@@ -18,8 +18,6 @@ function pad(str, value, filler) {
   }
 }
 
-
-
 module.exports = {
   addSpaces: addSpaces,
   pad: pad,

@@ -34,7 +34,62 @@ Formatter.prototype = {
       name2 += '_' + t.sub;
     }
     var f = this['_format_' + name2] || this['_format_' + name1] || this['_format_' + t.type] || this.defaultFormat;
-    return f.call(this, value);
+    return f.call(this, value).trim();
+  },
+
+  _formatObject: function(value, opts) {
+    opts = opts || {};
+    var mainKeys = opts.keys || this.keys(value);
+
+    var len = 0;
+
+    var formatPropertyValue = opts.formatPropertyValue || this.formatPropertyValue;
+    var formatPropertyName = opts.formatPropertyName || this.formatPropertyName;
+    var keyValueSep = opts.keyValueSep || ': ';
+    var keyFilter = opts.keyFilter || function() { return true; };
+
+    this.seen.push(value);
+    var keys = [];
+
+    mainKeys.forEach(function(key) {
+      if(!keyFilter(key)) return;
+
+      var fName = formatPropertyName.call(this, key);
+
+      var f = (fName ? fName + keyValueSep : '') + formatPropertyValue.call(this, value, key);
+      len += f.length;
+      keys.push(f);
+    }, this);
+    this.seen.pop();
+
+    (opts.additionalProperties || []).forEach(function(keyValue) {
+      var f = keyValue[0] + keyValueSep + this.format(keyValue[1]);
+      len += f.length;
+      keys.push(f);
+    }, this);
+
+    var prefix = opts.prefix || Formatter.constructorName(value) || '';
+    if(prefix.length > 0) prefix += ' ';
+
+    var lbracket, rbracket;
+    if(Array.isArray(opts.brackets)) {
+      lbracket = opts.brackets && opts.brackets[0];
+      rbracket = opts.brackets && opts.brackets[1];
+    } else {
+      lbracket = '{';
+      rbracket = '}';
+    }
+
+    var rootValue = opts.value || '';
+
+    if(keys.length === 0)
+      return rootValue || (prefix + lbracket + rbracket);
+
+    if(len <= this.maxLineLength) {
+      return prefix + lbracket + ' ' + (rootValue ? rootValue + ' ' : '') + keys.join(this.propSep + ' ') + ' ' + rbracket;
+    } else {
+      return prefix + lbracket + '\n' + (rootValue ? '  ' + rootValue + '\n' : '') + keys.map(util.addSpaces).join(this.propSep + '\n') + '\n' + rbracket;
+    }
   },
 
   formatObject: function(value, prefix, props) {
@@ -64,12 +119,7 @@ Formatter.prototype = {
   },
 
   formatProperty: function(value, prop) {
-    var desc;
-    try {
-      desc = Object.getOwnPropertyDescriptor(value, prop) || {value: value[prop]};
-    } catch(e) {
-      desc = {value: e};
-    }
+    var desc = Formatter.getPropertyDescriptor(value, prop);
 
     var propName = this.formatPropertyName(prop);
 
@@ -81,6 +131,19 @@ Formatter.prototype = {
       this.format(desc.value);
 
     return propName + ': ' + propValue;
+  },
+
+  formatPropertyValue: function(value, prop) {
+    var desc = Formatter.getPropertyDescriptor(value, prop);
+
+    var propValue = desc.get && desc.set ?
+      '[Getter/Setter]' : desc.get ?
+      '[Getter]' : desc.set ?
+      '[Setter]' : this.seen.indexOf(desc.value) >= 0 ?
+      '[Circular]' :
+      this.format(desc.value);
+
+    return propValue;
   }
 };
 
@@ -109,20 +172,55 @@ Formatter.functionName = function functionName(f) {
   return name;
 };
 
+Formatter.constructorName = function(obj) {
+  while (obj) {
+    var descriptor = Object.getOwnPropertyDescriptor(obj, 'constructor');
+    if (descriptor !== undefined &&
+        typeof descriptor.value === 'function') {
+
+        var name = Formatter.functionName(descriptor.value);
+        if(name !== '') {
+          return name;
+        }
+    }
+
+    obj = Object.getPrototypeOf(obj);
+  }
+};
+
+Formatter.getPropertyDescriptor = function(obj, value) {
+  var desc;
+  try {
+    desc = Object.getOwnPropertyDescriptor(obj, value) || {value: obj[value]};
+  } catch(e) {
+    desc = {value: e};
+  }
+  return desc;
+};
+
 Formatter.generateFunctionForIndexedArray = function generateFunctionForIndexedArray(lengthProp, name, padding) {
   return function(value) {
-    var str = '';
-    var max = 50;
-    var len = value[lengthProp];
-    if(len > 0) {
-      for(var i = 0; i < max && i < len; i++) {
-        var b = value[i] || 0;
-        str += ' ' + util.pad0(b.toString(16), padding);
-      }
-      if(len > max)
-        str += ' ... ';
+    var max = this.byteArrayMaxLength || 50;
+    var length = value[lengthProp];
+    var formattedValues = [];
+    var len = 0;
+    for(var i = 0; i < max && i < length; i++) {
+      var b = value[i] || 0;
+      var v = util.pad0(b.toString(16), padding);
+      len += v.length;
+      formattedValues.push(v);
     }
-    return '[' + (value.constructor.name || name) + (str ? ':' + str : '') + ']';
+    var prefix = value.constructor.name || name || '';
+    if(prefix) prefix += ' ';
+
+    if(formattedValues.length === 0)
+      return prefix + '[]';
+
+    if(len <= this.maxLineLength) {
+      return prefix + '[ ' + formattedValues.join(this.propSep + ' ') + ' ' + ']';
+    } else {
+      return prefix + '[\n' + formattedValues.map(util.addSpaces).join(this.propSep + '\n') + '\n' + ']';
+    }
   };
 };
 
@@ -131,26 +229,30 @@ Formatter.generateFunctionForIndexedArray = function generateFunctionForIndexedA
 });
 
 ['number', 'boolean'].forEach(function(name) {
-  var capName = name.substring(0, 1).toUpperCase() + name.substring(1);
-
-  Formatter.add('object', name, Formatter.formatObjectWithPrefix(function(value) {
-    return '[' + capName + ': ' + this.format(value.valueOf()) + ']';
-  }));
+  Formatter.add('object', name, function(value) {
+    return this._formatObject(value, {
+      additionalProperties: [['[[PrimitiveValue]]', value.valueOf()]]
+    });
+  });
 });
 
 Formatter.add('object', 'string', function(value) {
   var realValue = value.valueOf();
-  var prefix = '[String: ' + this.format(realValue) + ']';
-  var props = this.keys(value);
-  props = props.filter(function(p) {
-    return !(p.match(/\d+/) && parseInt(p, 10) < realValue.length);
-  });
 
-  if(props.length == 0) return prefix;
-  else return this.formatObject(value, prefix, props);
+  return this._formatObject(value, {
+    keyFilter: function(key) {
+      //skip useless indexed properties
+      return !(key.match(/\d+/) && parseInt(key, 10) < realValue.length);
+    },
+    additionalProperties: [['[[PrimitiveValue]]', realValue]]
+  });
 });
 
-Formatter.add('object', 'regexp', Formatter.formatObjectWithPrefix(String));
+Formatter.add('object', 'regexp', function(value) {
+  return this._formatObject(value, {
+    value: String(value)
+  });
+});
 
 Formatter.add('number', function(value) {
   if(value === 0 && 1 / value < 0) return '-0';
@@ -164,46 +266,34 @@ Formatter.add('string', function(value) {
 });
 
 Formatter.add('object', function(value) {
-  return this.formatObject(value);
+  return this._formatObject(value);
+});
+
+Formatter.add('object', 'arguments', function(value) {
+  return this._formatObject(value, {
+    prefix: 'Arguments',
+    formatPropertyName: function(key) {
+      if(!key.match(/\d+/)) {
+        return this.formatPropertyName(key);
+      }
+    },
+    brackets: ['[', ']']
+  });
 });
 
 Formatter.add('object', 'array', function(value) {
-  var keys = this.keys(value);
-  var len = 0;
-
-  this.seen.push(value);
-
-  var props = keys.map(function(prop) {
-    var desc;
-    try {
-      desc = Object.getOwnPropertyDescriptor(value, prop) || {value: value[prop]};
-    } catch(e) {
-      desc = {value: e};
-    }
-
-    var f;
-    if(prop.match(/\d+/)) {
-      f = this.format(desc.value);
-    } else {
-      f = this.formatProperty(desc.value, prop);
-    }
-    len += f.length;
-    return f;
-  }, this);
-
-  this.seen.pop();
-
-  if(props.length === 0) return '[]';
-
-  if(len <= this.maxLineLength) {
-    return '[ ' + props.join(this.propSep + ' ') + ' ]';
-  } else {
-    return '[' + '\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + ']';
-  }
+  return this._formatObject(value, {
+    formatPropertyName: function(key) {
+      if(!key.match(/\d+/)) {
+        return this.formatPropertyName(key);
+      }
+    },
+    brackets: ['[', ']']
+  });
 });
 
 
-function formatDate(value) {
+function formatDate(value) {//TODO need some better solution
   var to = value.getTimezoneOffset();
   var absTo = Math.abs(to);
   var hours = Math.floor(absTo / 60);
@@ -214,18 +304,22 @@ function formatDate(value) {
     + util.pad0(value.getMilliseconds(), 3) + ' ' + tzFormat;
 }
 
-Formatter.add('object', 'date', Formatter.formatObjectWithPrefix(formatDate));
+Formatter.add('object', 'date', function(value) {
+  return this._formatObject(value, { value: formatDate(value) });
+});
 
-Formatter.add('function', Formatter.formatObjectWithPrefix(function(value) {
-  var name = Formatter.functionName(value);
-  return '[Function' + (name ? ': ' + name : '') + ']';
-}));
+Formatter.add('function', function(value) {
+  return this._formatObject(value, {
+    additionalProperties: [['name', Formatter.functionName(value)]]
+  });
+});
 
-Formatter.add('object', 'error', Formatter.formatObjectWithPrefix(function(value) {
-  var name = value.name;
-  var message = value.message;
-  return '[' + name + (message ? ': ' + message : '') + ']';
-}));
+Formatter.add('object', 'error', function(value) {
+  return this._formatObject(value, {
+    prefix: value.name,
+    additionalProperties: [['message', value.message]]
+  });
+});
 
 Formatter.add('object', 'buffer', Formatter.generateFunctionForIndexedArray('length', 'Buffer', 2));
 
@@ -287,12 +381,12 @@ Formatter.add('object', 'set', function(value) {
 
   this.seen.pop();
 
-  if(props.length === 0) return '{ [Set] }';
+  if(props.length === 0) return 'Set {}';
 
   if(len <= this.maxLineLength) {
-    return '{ [Set] ' + props.join(this.propSep + ' ') + ' }';
+    return 'Set { ' + props.join(this.propSep + ' ') + ' }';
   } else {
-    return '{\n  [Set]\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
+    return 'Set {\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
   }
 });
 
@@ -325,12 +419,12 @@ Formatter.add('object', 'map', function(value) {
 
   this.seen.pop();
 
-  if(props.length === 0) return '{ [Map] }';
+  if(props.length === 0) return 'Map {}';
 
   if(len <= this.maxLineLength) {
-    return '{ [Map] ' + props.join(this.propSep + ' ') + ' }';
+    return 'Map { ' + props.join(this.propSep + ' ') + ' }';
   } else {
-    return '{\n  [Map]\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
+    return 'Map {\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
   }
 });
 
