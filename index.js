@@ -18,6 +18,8 @@ function Formatter(opts) {
 
   this.maxLineLength = typeof opts.maxLineLength === 'number' ? opts.maxLineLength : 60;
   this.propSep = opts.propSep || ',';
+
+  this.isUTCdate = !!opts.isUTCdate;
 }
 
 Formatter.prototype = {
@@ -293,19 +295,34 @@ Formatter.add('object', 'array', function(value) {
 });
 
 
-function formatDate(value) {//TODO need some better solution
+function formatDate(value, isUTC) {
+  var prefix = isUTC ? 'UTC' : '';
+
+  var date = value['get' + prefix + 'FullYear']() +
+    '-' +
+    util.pad0(value['get' + prefix + 'Month']() + 1, 2) +
+    '-' +
+    util.pad0(value['get' + prefix + 'Date'](), 2);
+
+  var time = util.pad0(value['get' + prefix + 'Hours'](), 2) +
+    ':' +
+    util.pad0(value['get' + prefix + 'Minutes'](), 2) +
+    ':' +
+    util.pad0(value['get' + prefix + 'Seconds'](), 2) +
+    '.' +
+    util.pad0(value['get' + prefix + 'Milliseconds'](), 3);
+
   var to = value.getTimezoneOffset();
   var absTo = Math.abs(to);
   var hours = Math.floor(absTo / 60);
   var minutes = absTo - hours * 60;
-  var tzFormat = 'GMT' + (to < 0 ? '+' : '-') + util.pad0(hours, 2) + util.pad0(minutes, 2);
-  return value.toLocaleDateString() + ' '
-    + value.toLocaleTimeString() + '.'
-    + util.pad0(value.getMilliseconds(), 3) + ' ' + tzFormat;
+  var tzFormat = (to < 0 ? '+' : '-') + util.pad0(hours, 2) + util.pad0(minutes, 2);
+
+  return date + ' ' + time + (isUTC ? '' : ' ' + tzFormat);
 }
 
 Formatter.add('object', 'date', function(value) {
-  return this._formatObject(value, { value: formatDate(value) });
+  return this._formatObject(value, { value: formatDate(value, this.isUTCdate) });
 });
 
 Formatter.add('function', function(value) {

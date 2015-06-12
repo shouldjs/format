@@ -3,6 +3,7 @@ function addSpaces(v) {
 }
 
 function pad(str, value, filler) {
+  str = String(str)
   var isRight = false;
 
   if(value < 0) {
