@@ -374,8 +374,8 @@ Formatter.add('object', 'html-element', '#document', function(value) {
   return value.documentElement.outerHTML;
 });
 
-Formatter.add('object', 'window', function() {
-  return '[Window]';
+Formatter.add('object', 'host', function() {
+  return '[Host]';
 });
 
 Formatter.add('object', 'set', function(value) {
