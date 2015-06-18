@@ -1,6 +1,6 @@
 {
   "name": "should-format",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Formatting of objects for should.js",
   "main": "index.js",
   "repository": {
@@ -23,6 +23,6 @@
     "mocha-better-spec-reporter": "latest"
   },
   "dependencies": {
-    "should-type": "0.1.1"
+    "should-type": "0.2.0"
   }
 }
