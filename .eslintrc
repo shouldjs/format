@@ -4,11 +4,5 @@
     "node": true
   },
 
-  "rules": {
-    "strict": false,
-    "quotes": false,
-    "curly": false,
-    "eqeqeq": false,
-    "no-underscore-dangle": false
-  }
+  "extends": "eslint:recommended"
 }

@@ -32,6 +32,12 @@ it('should format boolean', function() {
   assert.equal(format(false), 'false');
 });
 
+it('should format Symbols', function() {
+  if(typeof Symbol != 'undefined' && Symbol.for) {
+    assert.equal(format(Symbol.for('react.element')), 'Symbol(react.element)')
+  }
+})
+
 it('should format primitive wrappers', function() {
   assert.equal(format(new Number(10)), 'Number { [[PrimitiveValue]]: 10 }');
   assert.equal(format(new Boolean(true)), 'Boolean { [[PrimitiveValue]]: true }');
