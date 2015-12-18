@@ -170,7 +170,12 @@ Formatter.functionName = function functionName(f) {
   if(f.name) {
     return f.name;
   }
-  var name = f.toString().match(functionNameRE)[1];
+  var matches = f.toString().match(functionNameRE);
+  if (matches === null) {
+    // `functionNameRE` doesn't match arrow functions.
+    return '';
+  }
+  var name = matches[1];
   return name;
 };
 
