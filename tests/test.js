@@ -74,6 +74,8 @@ it('should format function', function() {
   assert.equal(format(f), 'Function { name: \'\' }');
 
   assert.equal(format(fff), 'Function { name: \'fff\' }');
+
+  //TODO add test for arrow function
 });
 
 var getter = Object.create(null, {

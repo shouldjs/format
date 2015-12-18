@@ -1,6 +1,6 @@
 {
   "name": "should-format",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Formatting of objects for should.js",
   "main": "index.js",
   "repository": {
