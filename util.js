@@ -1,8 +1,15 @@
-function addSpaces(v) {
-  return v.split('\n').map(function(vv) { return '  ' + vv; }).join('\n');
+var EOL = '\n';
+
+export function indent(v, indentation) {
+  return v
+    .split(EOL)
+    .map(function(vv) {
+      return indentation + vv;
+    })
+    .join(EOL);
 }
 
-function pad(str, value, filler) {
+export function pad(str, value, filler) {
   str = String(str)
   var isRight = false;
 
@@ -19,10 +26,6 @@ function pad(str, value, filler) {
   }
 }
 
-module.exports = {
-  addSpaces: addSpaces,
-  pad: pad,
-  pad0: function(str, value) {
-    return pad(str, value, '0');
-  }
-};
+export function pad0(str, value) {
+  return pad(str, value, '0');
+}

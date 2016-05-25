@@ -1,15 +1,21 @@
 {
   "name": "should-format",
-  "version": "0.3.2",
+  "version": "1.0.0",
   "description": "Formatting of objects for should.js",
-  "main": "index.js",
+  "main": "cjs/should-format.js",
+  "jsnext:main": "es6/should-format.js",
   "repository": {
     "type": "git",
     "url": "git://github.com/shouldjs/format.git"
   },
   "scripts": {
-    "test": "mocha -R mocha-better-spec-reporter tests/test.js",
-    "browserify": "rm tests/browser/tests.js && browserify tests/test.js >> tests/browser/tests.js"
+    "test": "mocha --harmony_simd -R mocha-better-spec-reporter tests/test.js",
+    "browserify": "rm tests/browser/tests.js && browserify tests/test.js >> tests/browser/tests.js",
+    "cjs": "rollup --format=cjs --output=cjs/should-format.js index.js",
+    "es6": "rollup --format=es6 --output=es6/should-format.js index.js",
+    "build": "npm run cjs && npm run es6",
+    "prepublish": "npm run build",
+    "pretest": "npm run build"
   },
   "keywords": [
     "should",
@@ -20,9 +26,16 @@
   "devDependencies": {
     "browserify": "latest",
     "mocha": "latest",
-    "mocha-better-spec-reporter": "latest"
+    "mocha-better-spec-reporter": "latest",
+    "rollup": "^0.26.3"
   },
+  "files": [
+    "cjs/*",
+    "es6/*",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
-    "should-type": "0.2.0"
+    "should-type": "^1.0.0"
   }
 }

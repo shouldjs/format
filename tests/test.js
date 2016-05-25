@@ -201,3 +201,9 @@ it('should format map', function() {
       'Map {\n  1 => 2,\n  2 => \'abc\',\n  Object { a: 10 } =>\n  Set {},\n  \'abc\' =>\n  null\n}');
   }
 });
+
+it('should format SIMD vectors', function() {
+  if(typeof SIMD !== 'undefined') {
+    assert.equal(format(SIMD.Bool8x16()), 'Bool8x16 [\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false\n]');
+  }
+})

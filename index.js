@@ -1,5 +1,5 @@
-var getType = require('should-type');
-var util = require('./util');
+import getType from 'should-type';
+import { indent, pad0 } from './util';
 
 function genKeysFunc(f) {
   return function(value) {
@@ -9,12 +9,27 @@ function genKeysFunc(f) {
   };
 }
 
+var INDENT = '  ';
+
+function addSpaces(str) {
+  return indent(str, INDENT);
+}
+
 
 function Formatter(opts) {
   opts = opts || {};
 
   this.seen = [];
-  this.keys = genKeysFunc(opts.keys === false ? Object.getOwnPropertyNames : Object.keys);
+  var keysFunc;
+  if(typeof opts.keysFunc === 'function') {
+    keysFunc = opts.keysFunc;
+  } else if(opts.keys === false) {
+    keysFunc = Object.getOwnPropertyNames;
+  } else {
+    keysFunc = Object.keys;
+  }
+
+  this.keys = genKeysFunc(keysFunc);
 
   this.maxLineLength = typeof opts.maxLineLength === 'number' ? opts.maxLineLength : 60;
   this.propSep = opts.propSep || ',';
@@ -90,29 +105,7 @@ Formatter.prototype = {
     if(len <= this.maxLineLength) {
       return prefix + lbracket + ' ' + (rootValue ? rootValue + ' ' : '') + keys.join(this.propSep + ' ') + ' ' + rbracket;
     } else {
-      return prefix + lbracket + '\n' + (rootValue ? '  ' + rootValue + '\n' : '') + keys.map(util.addSpaces).join(this.propSep + '\n') + '\n' + rbracket;
-    }
-  },
-
-  formatObject: function(value, prefix, props) {
-    props = props || this.keys(value);
-
-    var len = 0;
-
-    this.seen.push(value);
-    props = props.map(function(prop) {
-      var f = this.formatProperty(value, prop);
-      len += f.length;
-      return f;
-    }, this);
-    this.seen.pop();
-
-    if(props.length === 0) return '{}';
-
-    if(len <= this.maxLineLength) {
-      return '{ ' + (prefix ? prefix + ' ' : '') + props.join(this.propSep + ' ') + ' }';
-    } else {
-      return '{' + '\n' + (prefix ? '  ' + prefix + '\n' : '') + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
+      return prefix + lbracket + '\n' + (rootValue ? '  ' + rootValue + '\n' : '') + keys.map(addSpaces).join(this.propSep + '\n') + '\n' + rbracket;
     }
   },
 
@@ -155,14 +148,6 @@ Formatter.add = function add(type, cls, sub, f) {
   Formatter.prototype['_format_' + args.join('_')] = f;
 };
 
-Formatter.formatObjectWithPrefix = function formatObjectWithPrefix(f) {
-  return function(value) {
-    var prefix = f.call(this, value);
-    var props = this.keys(value);
-    if(props.length == 0) return prefix;
-    else return this.formatObject(value, prefix, props);
-  };
-};
 
 var functionNameRE = /^\s*function\s*(\S*)\s*\(/;
 
@@ -213,7 +198,7 @@ Formatter.generateFunctionForIndexedArray = function generateFunctionForIndexedA
     var len = 0;
     for(var i = 0; i < max && i < length; i++) {
       var b = value[i] || 0;
-      var v = util.pad0(b.toString(16), padding);
+      var v = pad0(b.toString(16), padding);
       len += v.length;
       formattedValues.push(v);
     }
@@ -226,7 +211,7 @@ Formatter.generateFunctionForIndexedArray = function generateFunctionForIndexedA
     if(len <= this.maxLineLength) {
       return prefix + '[ ' + formattedValues.join(this.propSep + ' ') + ' ' + ']';
     } else {
-      return prefix + '[\n' + formattedValues.map(util.addSpaces).join(this.propSep + '\n') + '\n' + ']';
+      return prefix + '[\n' + formattedValues.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
     }
   };
 };
@@ -306,23 +291,23 @@ function formatDate(value, isUTC) {
 
   var date = value['get' + prefix + 'FullYear']() +
     '-' +
-    util.pad0(value['get' + prefix + 'Month']() + 1, 2) +
+    pad0(value['get' + prefix + 'Month']() + 1, 2) +
     '-' +
-    util.pad0(value['get' + prefix + 'Date'](), 2);
+    pad0(value['get' + prefix + 'Date'](), 2);
 
-  var time = util.pad0(value['get' + prefix + 'Hours'](), 2) +
+  var time = pad0(value['get' + prefix + 'Hours'](), 2) +
     ':' +
-    util.pad0(value['get' + prefix + 'Minutes'](), 2) +
+    pad0(value['get' + prefix + 'Minutes'](), 2) +
     ':' +
-    util.pad0(value['get' + prefix + 'Seconds'](), 2) +
+    pad0(value['get' + prefix + 'Seconds'](), 2) +
     '.' +
-    util.pad0(value['get' + prefix + 'Milliseconds'](), 3);
+    pad0(value['get' + prefix + 'Milliseconds'](), 3);
 
   var to = value.getTimezoneOffset();
   var absTo = Math.abs(to);
   var hours = Math.floor(absTo / 60);
   var minutes = absTo - hours * 60;
-  var tzFormat = (to < 0 ? '+' : '-') + util.pad0(hours, 2) + util.pad0(minutes, 2);
+  var tzFormat = (to < 0 ? '+' : '-') + pad0(hours, 2) + pad0(minutes, 2);
 
   return date + ' ' + time + (isUTC ? '' : ' ' + tzFormat);
 }
@@ -409,7 +394,7 @@ Formatter.add('object', 'set', function(value) {
   if(len <= this.maxLineLength) {
     return 'Set { ' + props.join(this.propSep + ' ') + ' }';
   } else {
-    return 'Set {\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
+    return 'Set {\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
   }
 });
 
@@ -447,9 +432,42 @@ Formatter.add('object', 'map', function(value) {
   if(len <= this.maxLineLength) {
     return 'Map { ' + props.join(this.propSep + ' ') + ' }';
   } else {
-    return 'Map {\n' + props.map(util.addSpaces).join(this.propSep + '\n') + '\n' + '}';
+    return 'Map {\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
   }
 });
+
+function simdVectorFormat(constructorName, length) {
+  return function(value) {
+    var Constructor = value.constructor;
+    var extractLane = Constructor.extractLane;
+
+    var len = 0;
+    var props = [];
+
+    for(var i = 0; i < length; i ++) {
+      var key = this.format(extractLane(value, i));
+      len += key.length;
+      props.push(key);
+    }
+
+    if(len <= this.maxLineLength) {
+      return constructorName + ' [ ' + props.join(this.propSep + ' ') + ' ]';
+    } else {
+      return constructorName + ' [\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
+    }
+  }
+}
+
+Formatter.add('object', 'simd', 'bool16x8', simdVectorFormat('Bool16x8', 8));
+Formatter.add('object', 'simd', 'bool32x4', simdVectorFormat('Bool32x4', 4));
+Formatter.add('object', 'simd', 'bool8x16', simdVectorFormat('Bool8x16', 16));
+Formatter.add('object', 'simd', 'float32x4', simdVectorFormat('Float32x4', 4));
+Formatter.add('object', 'simd', 'int16x8', simdVectorFormat('Int16x8', 8));
+Formatter.add('object', 'simd', 'int32x4', simdVectorFormat('Int32x4', 4));
+Formatter.add('object', 'simd', 'int8x16', simdVectorFormat('Int8x16', 16));
+Formatter.add('object', 'simd', 'uint16x8', simdVectorFormat('Uint16x8', 8));
+Formatter.add('object', 'simd', 'uint32x4', simdVectorFormat('Uint32x4', 4));
+Formatter.add('object', 'simd', 'uint8x16', simdVectorFormat('Uint8x16', 16));
 
 Formatter.prototype.defaultFormat = Formatter.prototype._format_object;
 
@@ -458,4 +476,4 @@ function defaultFormat(value, opts) {
 }
 
 defaultFormat.Formatter = Formatter;
-module.exports = defaultFormat;
+export default defaultFormat;
