@@ -1,6 +1,6 @@
 {
   "name": "should-format",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Formatting of objects for should.js",
   "main": "cjs/should-format.js",
   "jsnext:main": "es6/should-format.js",
@@ -27,7 +27,7 @@
     "browserify": "latest",
     "mocha": "latest",
     "mocha-better-spec-reporter": "latest",
-    "rollup": "^0.26.3"
+    "rollup": "0.34.1"
   },
   "files": [
     "cjs/*",
