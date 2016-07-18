@@ -136,6 +136,12 @@ it('should format arguments', function() {
 
 it('should format arrays', function() {
   assert.equal(format([1, 2, 'abc']), 'Array [ 1, 2, \'abc\' ]');
+  var arr = [1, 2, 'abc', 3, 4, 5, 6, 7, 8, 9, 19];
+  assert.equal(format(arr), 'Array [ 1, 2, \'abc\', 3, 4, 5, 6, 7, 8, 9, 19 ]');
+  arr.a = 10;
+  arr.aa = 10;
+  arr.bb = 1;
+  assert.equal(format(arr), 'Array [ 1, 2, \'abc\', 3, 4, 5, 6, 7, 8, 9, 19, a: 10, aa: 10, bb: 1 ]');
 });
 
 it('should format node buffer', function() {

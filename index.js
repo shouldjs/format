@@ -1,10 +1,28 @@
 import getType from 'should-type';
 import { indent, pad0 } from './util';
 
+function looksLikeANumber(n) {
+  return !!n.match(/\d+/);
+}
+
+function keyCompare(a, b) {
+  var aNum = looksLikeANumber(a);
+  var bNum = looksLikeANumber(b);
+  if(aNum && bNum) {
+    return 1*a - 1*b;
+  } else if(aNum && !bNum) {
+    return -1;
+  } else if(!aNum && bNum) {
+    return 1;
+  } else {
+    return a.localeCompare(b);
+  }
+}
+
 function genKeysFunc(f) {
   return function(value) {
     var k = f(value);
-    k.sort();
+    k.sort(keyCompare);
     return k;
   };
 }
