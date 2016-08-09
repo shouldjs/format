@@ -3,6 +3,7 @@ import t from 'should-type';
 
 import { addSpaces, pad0, functionName, constructorName } from './util';
 
+import { typeAdaptorForEachFormat } from './format/type-adaptor-for-each';
 import { formatPlainObject, formatPlainObjectKey } from './format/object';
 import { formatWrapper1, formatWrapper2 } from './format/primitive-type-wrappers';
 import { formatRegExp } from './format/regexp';
@@ -31,6 +32,7 @@ defaultFormat.pad0 = pad0;
 defaultFormat.functionName = functionName;
 defaultFormat.constructorName = constructorName;
 defaultFormat.formatPlainObjectKey = formatPlainObjectKey;
+defaultFormat.typeAdaptorForEachFormat = typeAdaptorForEachFormat;
 export default defaultFormat;
 
 
