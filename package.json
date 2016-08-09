@@ -1,6 +1,6 @@
 {
   "name": "should-format",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Formatting of objects for should.js",
   "main": "cjs/should-format.js",
   "jsnext:main": "es6/should-format.js",
