@@ -12,7 +12,7 @@
     "test": "mocha --harmony_simd -R mocha-better-spec-reporter tests/test.js",
     "browserify": "rm tests/browser/tests.js && browserify tests/test.js >> tests/browser/tests.js",
     "cjs": "rollup --format=cjs --output=cjs/should-format.js index.js",
-    "es6": "rollup --format=es6 --output=es6/should-format.js index.js",
+    "es6": "rollup --format=es --output=es6/should-format.js index.js",
     "build": "npm run cjs && npm run es6",
     "prepublish": "npm run build",
     "pretest": "npm run build"
@@ -29,7 +29,7 @@
     "eslint-config-shouldjs": "^1.0.2",
     "mocha": "latest",
     "mocha-better-spec-reporter": "latest",
-    "rollup": "0.34.1"
+    "rollup": "0.34.7"
   },
   "files": [
     "cjs/*",
@@ -38,6 +38,7 @@
     "LICENSE"
   ],
   "dependencies": {
-    "should-type": "^1.0.0"
+    "should-type": "^1.3.0",
+    "should-type-adaptors": "^1.0.0"
   }
 }
