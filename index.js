@@ -1,497 +1,131 @@
-import getType from 'should-type';
-import { indent, pad0 } from './util';
+import { Formatter } from './formatter';
+import t from 'should-type';
 
-function looksLikeANumber(n) {
-  return !!n.match(/\d+/);
-}
+import { addSpaces, pad0, functionName, constructorName } from './util';
 
-function keyCompare(a, b) {
-  var aNum = looksLikeANumber(a);
-  var bNum = looksLikeANumber(b);
-  if(aNum && bNum) {
-    return 1*a - 1*b;
-  } else if(aNum && !bNum) {
-    return -1;
-  } else if(!aNum && bNum) {
-    return 1;
-  } else {
-    return a.localeCompare(b);
-  }
-}
+import { formatPlainObject, formatPlainObjectKey } from './format/object';
+import { formatWrapper1, formatWrapper2 } from './format/primitive-type-wrappers';
+import { formatRegExp } from './format/regexp';
 
-function genKeysFunc(f) {
-  return function(value) {
-    var k = f(value);
-    k.sort(keyCompare);
-    return k;
-  };
-}
+import { formatFunction } from './format/function';
 
-var INDENT = '  ';
+import { formatArray } from './format/array';
+import { formatArguments } from './format/arguments';
+import { formatDate } from './format/date';
+import { formatError } from './format/error';
 
-function addSpaces(str) {
-  return indent(str, INDENT);
-}
+import { generateFormatForNumberArray } from './format/number-array';
 
+import { formatMap } from './format/map';
+import { formatSet } from './format/set';
 
-function Formatter(opts) {
-  opts = opts || {};
-
-  this.seen = [];
-  var keysFunc;
-  if(typeof opts.keysFunc === 'function') {
-    keysFunc = opts.keysFunc;
-  } else if(opts.keys === false) {
-    keysFunc = Object.getOwnPropertyNames;
-  } else {
-    keysFunc = Object.keys;
-  }
-
-  this.keys = genKeysFunc(keysFunc);
-
-  this.maxLineLength = typeof opts.maxLineLength === 'number' ? opts.maxLineLength : 60;
-  this.propSep = opts.propSep || ',';
-
-  this.isUTCdate = !!opts.isUTCdate;
-}
-
-Formatter.prototype = {
-  constructor: Formatter,
-
-  format: function(value) {
-    var t = getType(value);
-    var name1 = t.type, name2 = t.type;
-    if(t.cls) {
-      name1 += '_' + t.cls;
-      name2 += '_' + t.cls;
-    }
-    if(t.sub) {
-      name2 += '_' + t.sub;
-    }
-    var f = this['_format_' + name2] || this['_format_' + name1] || this['_format_' + t.type] || this.defaultFormat;
-    return f.call(this, value).trim();
-  },
-
-  _formatObject: function(value, opts) {
-    opts = opts || {};
-    var mainKeys = opts.keys || this.keys(value);
-
-    var len = 0;
-
-    var formatPropertyValue = opts.formatPropertyValue || this.formatPropertyValue;
-    var formatPropertyName = opts.formatPropertyName || this.formatPropertyName;
-    var keyValueSep = opts.keyValueSep || ': ';
-    var keyFilter = opts.keyFilter || function() { return true; };
-
-    this.seen.push(value);
-    var keys = [];
-
-    mainKeys.forEach(function(key) {
-      if(!keyFilter(key)) return;
-
-      var fName = formatPropertyName.call(this, key);
-
-      var f = (fName ? fName + keyValueSep : '') + formatPropertyValue.call(this, value, key);
-      len += f.length;
-      keys.push(f);
-    }, this);
-    this.seen.pop();
-
-    (opts.additionalProperties || []).forEach(function(keyValue) {
-      var f = keyValue[0] + keyValueSep + this.format(keyValue[1]);
-      len += f.length;
-      keys.push(f);
-    }, this);
-
-    var prefix = opts.prefix || Formatter.constructorName(value) || '';
-    if(prefix.length > 0) prefix += ' ';
-
-    var lbracket, rbracket;
-    if(Array.isArray(opts.brackets)) {
-      lbracket = opts.brackets && opts.brackets[0];
-      rbracket = opts.brackets && opts.brackets[1];
-    } else {
-      lbracket = '{';
-      rbracket = '}';
-    }
-
-    var rootValue = opts.value || '';
-
-    if(keys.length === 0)
-      return rootValue || (prefix + lbracket + rbracket);
-
-    if(len <= this.maxLineLength) {
-      return prefix + lbracket + ' ' + (rootValue ? rootValue + ' ' : '') + keys.join(this.propSep + ' ') + ' ' + rbracket;
-    } else {
-      return prefix + lbracket + '\n' + (rootValue ? '  ' + rootValue + '\n' : '') + keys.map(addSpaces).join(this.propSep + '\n') + '\n' + rbracket;
-    }
-  },
-
-  formatPropertyName: function(name) {
-    return name.match(/^[a-zA-Z_$][a-zA-Z_$0-9]*$/) ? name : this.format(name);
-  },
-
-  formatProperty: function(value, prop) {
-    var desc = Formatter.getPropertyDescriptor(value, prop);
-
-    var propName = this.formatPropertyName(prop);
-
-    var propValue = desc.get && desc.set ?
-      '[Getter/Setter]' : desc.get ?
-      '[Getter]' : desc.set ?
-      '[Setter]' : this.seen.indexOf(desc.value) >= 0 ?
-      '[Circular]' :
-      this.format(desc.value);
-
-    return propName + ': ' + propValue;
-  },
-
-  formatPropertyValue: function(value, prop) {
-    var desc = Formatter.getPropertyDescriptor(value, prop);
-
-    var propValue = desc.get && desc.set ?
-      '[Getter/Setter]' : desc.get ?
-      '[Getter]' : desc.set ?
-      '[Setter]' : this.seen.indexOf(desc.value) >= 0 ?
-      '[Circular]' :
-      this.format(desc.value);
-
-    return propValue;
-  }
-};
-
-Formatter.add = function add(type, cls, sub, f) {
-  var args = Array.prototype.slice.call(arguments);
-  f = args.pop();
-  Formatter.prototype['_format_' + args.join('_')] = f;
-};
-
-
-var functionNameRE = /^\s*function\s*(\S*)\s*\(/;
-
-Formatter.functionName = function functionName(f) {
-  if(f.name) {
-    return f.name;
-  }
-  var matches = f.toString().match(functionNameRE);
-  if (matches === null) {
-    // `functionNameRE` doesn't match arrow functions.
-    return '';
-  }
-  var name = matches[1];
-  return name;
-};
-
-Formatter.constructorName = function(obj) {
-  while (obj) {
-    var descriptor = Object.getOwnPropertyDescriptor(obj, 'constructor');
-    if (descriptor !== undefined &&
-        typeof descriptor.value === 'function') {
-
-        var name = Formatter.functionName(descriptor.value);
-        if(name !== '') {
-          return name;
-        }
-    }
-
-    obj = Object.getPrototypeOf(obj);
-  }
-};
-
-Formatter.getPropertyDescriptor = function(obj, value) {
-  var desc;
-  try {
-    desc = Object.getOwnPropertyDescriptor(obj, value) || {value: obj[value]};
-  } catch(e) {
-    desc = {value: e};
-  }
-  return desc;
-};
-
-Formatter.generateFunctionForIndexedArray = function generateFunctionForIndexedArray(lengthProp, name, padding) {
-  return function(value) {
-    var max = this.byteArrayMaxLength || 50;
-    var length = value[lengthProp];
-    var formattedValues = [];
-    var len = 0;
-    for(var i = 0; i < max && i < length; i++) {
-      var b = value[i] || 0;
-      var v = pad0(b.toString(16), padding);
-      len += v.length;
-      formattedValues.push(v);
-    }
-    var prefix = value.constructor.name || name || '';
-    if(prefix) prefix += ' ';
-
-    if(formattedValues.length === 0)
-      return prefix + '[]';
-
-    if(len <= this.maxLineLength) {
-      return prefix + '[ ' + formattedValues.join(this.propSep + ' ') + ' ' + ']';
-    } else {
-      return prefix + '[\n' + formattedValues.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
-    }
-  };
-};
-
-Formatter.add('undefined', function() { return 'undefined' });
-Formatter.add('null', function() { return 'null' });
-Formatter.add('boolean', function(value) { return value ? 'true': 'false' });
-Formatter.add('symbol', function(value) { return value.toString() });
-
-['number', 'boolean'].forEach(function(name) {
-  Formatter.add('object', name, function(value) {
-    return this._formatObject(value, {
-      additionalProperties: [['[[PrimitiveValue]]', value.valueOf()]]
-    });
-  });
-});
-
-Formatter.add('object', 'string', function(value) {
-  var realValue = value.valueOf();
-
-  return this._formatObject(value, {
-    keyFilter: function(key) {
-      //skip useless indexed properties
-      return !(key.match(/\d+/) && parseInt(key, 10) < realValue.length);
-    },
-    additionalProperties: [['[[PrimitiveValue]]', realValue]]
-  });
-});
-
-Formatter.add('object', 'regexp', function(value) {
-  return this._formatObject(value, {
-    value: String(value)
-  });
-});
-
-Formatter.add('number', function(value) {
-  if(value === 0 && 1 / value < 0) return '-0';
-  return String(value);
-});
-
-Formatter.add('string', function(value) {
-  return '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
-      .replace(/'/g, "\\'")
-      .replace(/\\"/g, '"') + '\'';
-});
-
-Formatter.add('object', function(value) {
-  return this._formatObject(value);
-});
-
-Formatter.add('object', 'arguments', function(value) {
-  return this._formatObject(value, {
-    prefix: 'Arguments',
-    formatPropertyName: function(key) {
-      if(!key.match(/\d+/)) {
-        return this.formatPropertyName(key);
-      }
-    },
-    brackets: ['[', ']']
-  });
-});
-
-Formatter.add('object', 'array', function(value) {
-  return this._formatObject(value, {
-    formatPropertyName: function(key) {
-      if(!key.match(/\d+/)) {
-        return this.formatPropertyName(key);
-      }
-    },
-    brackets: ['[', ']']
-  });
-});
-
-
-function formatDate(value, isUTC) {
-  var prefix = isUTC ? 'UTC' : '';
-
-  var date = value['get' + prefix + 'FullYear']() +
-    '-' +
-    pad0(value['get' + prefix + 'Month']() + 1, 2) +
-    '-' +
-    pad0(value['get' + prefix + 'Date'](), 2);
-
-  var time = pad0(value['get' + prefix + 'Hours'](), 2) +
-    ':' +
-    pad0(value['get' + prefix + 'Minutes'](), 2) +
-    ':' +
-    pad0(value['get' + prefix + 'Seconds'](), 2) +
-    '.' +
-    pad0(value['get' + prefix + 'Milliseconds'](), 3);
-
-  var to = value.getTimezoneOffset();
-  var absTo = Math.abs(to);
-  var hours = Math.floor(absTo / 60);
-  var minutes = absTo - hours * 60;
-  var tzFormat = (to < 0 ? '+' : '-') + pad0(hours, 2) + pad0(minutes, 2);
-
-  return date + ' ' + time + (isUTC ? '' : ' ' + tzFormat);
-}
-
-Formatter.add('object', 'date', function(value) {
-  return this._formatObject(value, { value: formatDate(value, this.isUTCdate) });
-});
-
-Formatter.add('function', function(value) {
-  return this._formatObject(value, {
-    additionalProperties: [['name', Formatter.functionName(value)]]
-  });
-});
-
-Formatter.add('object', 'error', function(value) {
-  return this._formatObject(value, {
-    prefix: value.name,
-    additionalProperties: [['message', value.message]]
-  });
-});
-
-Formatter.add('object', 'buffer', Formatter.generateFunctionForIndexedArray('length', 'Buffer', 2));
-
-Formatter.add('object', 'array-buffer', Formatter.generateFunctionForIndexedArray('byteLength', 'ArrayBuffer', 2));
-
-Formatter.add('object', 'typed-array', 'int8', Formatter.generateFunctionForIndexedArray('length', 'Int8Array', 2));
-Formatter.add('object', 'typed-array', 'uint8', Formatter.generateFunctionForIndexedArray('length', 'Uint8Array', 2));
-Formatter.add('object', 'typed-array', 'uint8clamped', Formatter.generateFunctionForIndexedArray('length', 'Uint8ClampedArray', 2));
-
-Formatter.add('object', 'typed-array', 'int16', Formatter.generateFunctionForIndexedArray('length', 'Int16Array', 4));
-Formatter.add('object', 'typed-array', 'uint16', Formatter.generateFunctionForIndexedArray('length', 'Uint16Array', 4));
-
-Formatter.add('object', 'typed-array', 'int32', Formatter.generateFunctionForIndexedArray('length', 'Int32Array', 8));
-Formatter.add('object', 'typed-array', 'uint32', Formatter.generateFunctionForIndexedArray('length', 'Uint32Array', 8));
-
-//TODO add float32 and float64
-
-Formatter.add('object', 'promise', function() {
-  return '[Promise]';//TODO it could be nice to inspect its state and value
-});
-
-Formatter.add('object', 'xhr', function() {
-  return '[XMLHttpRequest]';//TODO it could be nice to inspect its state
-});
-
-Formatter.add('object', 'html-element', function(value) {
-  return value.outerHTML;
-});
-
-Formatter.add('object', 'html-element', '#text', function(value) {
-  return value.nodeValue;
-});
-
-Formatter.add('object', 'html-element', '#document', function(value) {
-  return value.documentElement.outerHTML;
-});
-
-Formatter.add('object', 'host', function() {
-  return '[Host]';
-});
-
-Formatter.add('object', 'set', function(value) {
-  var iter = value.values();
-  var len = 0;
-
-  this.seen.push(value);
-
-  var props = [];
-
-  var next = iter.next();
-  while(!next.done) {
-    var val = next.value;
-    var f = this.format(val);
-    len += f.length;
-    props.push(f);
-
-    next = iter.next();
-  }
-
-  this.seen.pop();
-
-  if(props.length === 0) return 'Set {}';
-
-  if(len <= this.maxLineLength) {
-    return 'Set { ' + props.join(this.propSep + ' ') + ' }';
-  } else {
-    return 'Set {\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
-  }
-});
-
-Formatter.add('object', 'map', function(value) {
-  var iter = value.entries();
-  var len = 0;
-
-  this.seen.push(value);
-
-  var props = [];
-
-  var next = iter.next();
-  while(!next.done) {
-    var val = next.value;
-    var fK = this.format(val[0]);
-    var fV = this.format(val[1]);
-
-    var f;
-    if((fK.length + fV.length + 4) <= this.maxLineLength) {
-      f = fK + ' => ' + fV;
-    } else {
-      f = fK + ' =>\n' + fV;
-    }
-
-    len += fK.length + fV.length + 4;
-    props.push(f);
-
-    next = iter.next();
-  }
-
-  this.seen.pop();
-
-  if(props.length === 0) return 'Map {}';
-
-  if(len <= this.maxLineLength) {
-    return 'Map { ' + props.join(this.propSep + ' ') + ' }';
-  } else {
-    return 'Map {\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
-  }
-});
-
-function simdVectorFormat(constructorName, length) {
-  return function(value) {
-    var Constructor = value.constructor;
-    var extractLane = Constructor.extractLane;
-
-    var len = 0;
-    var props = [];
-
-    for(var i = 0; i < length; i ++) {
-      var key = this.format(extractLane(value, i));
-      len += key.length;
-      props.push(key);
-    }
-
-    if(len <= this.maxLineLength) {
-      return constructorName + ' [ ' + props.join(this.propSep + ' ') + ' ]';
-    } else {
-      return constructorName + ' [\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
-    }
-  }
-}
-
-Formatter.add('object', 'simd', 'bool16x8', simdVectorFormat('Bool16x8', 8));
-Formatter.add('object', 'simd', 'bool32x4', simdVectorFormat('Bool32x4', 4));
-Formatter.add('object', 'simd', 'bool8x16', simdVectorFormat('Bool8x16', 16));
-Formatter.add('object', 'simd', 'float32x4', simdVectorFormat('Float32x4', 4));
-Formatter.add('object', 'simd', 'int16x8', simdVectorFormat('Int16x8', 8));
-Formatter.add('object', 'simd', 'int32x4', simdVectorFormat('Int32x4', 4));
-Formatter.add('object', 'simd', 'int8x16', simdVectorFormat('Int8x16', 16));
-Formatter.add('object', 'simd', 'uint16x8', simdVectorFormat('Uint16x8', 8));
-Formatter.add('object', 'simd', 'uint32x4', simdVectorFormat('Uint32x4', 4));
-Formatter.add('object', 'simd', 'uint8x16', simdVectorFormat('Uint8x16', 16));
-
-Formatter.prototype.defaultFormat = Formatter.prototype._format_object;
+import { genSimdVectorFormat } from './format/simd';
 
 function defaultFormat(value, opts) {
   return new Formatter(opts).format(value);
 }
 
 defaultFormat.Formatter = Formatter;
+defaultFormat.addSpaces = addSpaces;
+defaultFormat.pad0 = pad0;
+defaultFormat.functionName = functionName;
+defaultFormat.constructorName = constructorName;
+defaultFormat.formatPlainObjectKey = formatPlainObjectKey;
 export default defaultFormat;
+
+
+// adding primitive types
+Formatter.addType(new t.Type(t.UNDEFINED), function() {
+  return 'undefined';
+});
+Formatter.addType(new t.Type(t.NULL), function() {
+  return 'null';
+});
+Formatter.addType(new t.Type(t.BOOLEAN), function(value) {
+  return value ? 'true': 'false';
+});
+Formatter.addType(new t.Type(t.SYMBOL), function(value) {
+  return value.toString();
+});
+Formatter.addType(new t.Type(t.NUMBER), function(value) {
+  if (value === 0 && 1 / value < 0) {
+    return '-0';
+  }
+  return String(value);
+});
+
+Formatter.addType(new t.Type(t.STRING), function(value) {
+  return '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
+      .replace(/'/g, "\\'")
+      .replace(/\\"/g, '"') + '\'';
+});
+
+Formatter.addType(new t.Type(t.FUNCTION), formatFunction);
+
+// plain object
+Formatter.addType(new t.Type(t.OBJECT), formatPlainObject);
+
+// type wrappers
+Formatter.addType(new t.Type(t.OBJECT, t.NUMBER), formatWrapper1);
+Formatter.addType(new t.Type(t.OBJECT, t.BOOLEAN), formatWrapper1);
+Formatter.addType(new t.Type(t.OBJECT, t.STRING), formatWrapper2);
+
+Formatter.addType(new t.Type(t.OBJECT, t.REGEXP), formatRegExp);
+Formatter.addType(new t.Type(t.OBJECT, t.ARRAY), formatArray);
+Formatter.addType(new t.Type(t.OBJECT, t.ARGUMENTS), formatArguments);
+Formatter.addType(new t.Type(t.OBJECT, t.DATE), formatDate);
+Formatter.addType(new t.Type(t.OBJECT, t.ERROR), formatError);
+Formatter.addType(new t.Type(t.OBJECT, t.SET), formatSet);
+Formatter.addType(new t.Type(t.OBJECT, t.MAP), formatMap);
+Formatter.addType(new t.Type(t.OBJECT, t.WEAK_MAP), formatMap);
+Formatter.addType(new t.Type(t.OBJECT, t.WEAK_SET), formatSet);
+
+Formatter.addType(new t.Type(t.OBJECT, t.BUFFER), generateFormatForNumberArray('length', 'Buffer', 2));
+
+Formatter.addType(new t.Type(t.OBJECT, t.ARRAY_BUFFER), generateFormatForNumberArray('byteLength', 'ArrayBuffer', 2));
+
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'int8'), generateFormatForNumberArray('length', 'Int8Array', 2));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint8'), generateFormatForNumberArray('length', 'Uint8Array', 2));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint8clamped'), generateFormatForNumberArray('length', 'Uint8ClampedArray', 2));
+
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'int16'), generateFormatForNumberArray('length', 'Int16Array', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint16'), generateFormatForNumberArray('length', 'Uint16Array', 4));
+
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'int32'), generateFormatForNumberArray('length', 'Int32Array', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint32'), generateFormatForNumberArray('length', 'Uint32Array', 8));
+
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'bool16x8'), genSimdVectorFormat('Bool16x8', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'bool32x4'), genSimdVectorFormat('Bool32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'bool8x16'), genSimdVectorFormat('Bool8x16', 16));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'float32x4'), genSimdVectorFormat('Float32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'int16x8'), genSimdVectorFormat('Int16x8', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'int32x4'), genSimdVectorFormat('Int32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'int8x16'), genSimdVectorFormat('Int8x16', 16));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'uint16x8'), genSimdVectorFormat('Uint16x8', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'uint32x4'), genSimdVectorFormat('Uint32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'uint8x16'), genSimdVectorFormat('Uint8x16', 16));
+
+
+Formatter.addType(new t.Type(t.OBJECT, t.PROMISE), function() {
+  return '[Promise]';//TODO it could be nice to inspect its state and value
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.XHR), function() {
+  return '[XMLHttpRequest]';//TODO it could be nice to inspect its state
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HTML_ELEMENT), function(value) {
+  return value.outerHTML;
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HTML_ELEMENT, '#text'), function(value) {
+  return value.nodeValue;
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HTML_ELEMENT, '#document'), function(value) {
+  return value.documentElement.outerHTML;
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HOST), function() {
+  return '[Host]';
+});

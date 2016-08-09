@@ -82,13 +82,15 @@ var getter = Object.create(null, {
   a: {
     get: function() {
       return 'aaa';
-    }
+    },
+    enumerable: true
   }
 });
 var setter = Object.create(null, {
   b: {
     set: function() {
-    }
+    },
+    enumerable: true
   }
 });
 var getterAndSetter = Object.create(null, {
@@ -97,7 +99,8 @@ var getterAndSetter = Object.create(null, {
       return 'ccc';
     },
     set: function() {
-    }
+    },
+    enumerable: true
   }
 });
 
@@ -204,7 +207,7 @@ it('should format map', function() {
     assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]])),
       'Map { 1 => 2, 2 => \'abc\', Object { a: 10 } => Set {}, \'abc\' => null }');
     assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]]), { maxLineLength: 10 }),
-      'Map {\n  1 => 2,\n  2 => \'abc\',\n  Object { a: 10 } =>\n  Set {},\n  \'abc\' =>\n  null\n}');
+      'Map {\n  1 => 2,\n  2 => \'abc\',\n  Object { a: 10 } => Set {},\n  \'abc\' => null\n}');
   }
 });
 
@@ -212,4 +215,8 @@ it('should format SIMD vectors', function() {
   if(typeof SIMD !== 'undefined') {
     assert.equal(format(SIMD.Bool8x16()), 'Bool8x16 [\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false\n]');
   }
-})
+});
+
+it('should format date', function() {
+  assert.equal(format(new Date(1990, 2, 3, 2, 2, 2, 2), { isUTCdate: true }), '1990-03-02 23:02:02.002');
+});

@@ -3,7 +3,99 @@
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
-var getType = _interopDefault(require('should-type'));
+var t = _interopDefault(require('should-type'));
+var shouldTypeAdaptors = require('should-type-adaptors');
+
+function looksLikeANumber(n) {
+  return !!n.match(/\d+/);
+}
+
+function keyCompare(a, b) {
+  var aNum = looksLikeANumber(a);
+  var bNum = looksLikeANumber(b);
+  if (aNum && bNum) {
+    return 1*a - 1*b;
+  } else if (aNum && !bNum) {
+    return -1;
+  } else if (!aNum && bNum) {
+    return 1;
+  } else {
+    return a.localeCompare(b);
+  }
+}
+
+function genKeysFunc(f) {
+  return function(value) {
+    var k = f(value);
+    k.sort(keyCompare);
+    return k;
+  };
+}
+
+function Formatter(opts) {
+  opts = opts || {};
+
+  this.seen = [];
+
+  var keysFunc;
+  if (typeof opts.keysFunc === 'function') {
+    keysFunc = opts.keysFunc;
+  } else if (opts.keys === false) {
+    keysFunc = Object.getOwnPropertyNames;
+  } else {
+    keysFunc = Object.keys;
+  }
+
+  this.getKeys = genKeysFunc(keysFunc);
+
+  this.maxLineLength = typeof opts.maxLineLength === 'number' ? opts.maxLineLength : 60;
+  this.propSep = opts.propSep || ',';
+
+  this.isUTCdate = !!opts.isUTCdate;
+}
+
+
+
+Formatter.prototype = {
+  constructor: Formatter,
+
+  format: function(value) {
+    var tp = t(value);
+
+    if (tp.type === t.OBJECT && this.alreadySeen(value)) {
+      return '[Circular]';
+    }
+
+    var tries = tp.toTryTypes();
+    var f = this.defaultFormat;
+    while (tries.length) {
+      var toTry = tries.shift();
+      var name = Formatter.formatterFunctionName(toTry);
+      if (this[name]) {
+        f = this[name];
+        break;
+      }
+    }
+    return f.call(this, value).trim();
+  },
+
+  defaultFormat: function(obj) {
+    return String(obj);
+  },
+
+  alreadySeen: function(value) {
+    return this.seen.indexOf(value) >= 0;
+  }
+
+};
+
+Formatter.addType = function addType(tp, f) {
+  Formatter.prototype[Formatter.formatterFunctionName(tp)] = f;
+};
+
+Formatter.formatterFunctionName = function formatterFunctionName(tp) {
+  return '_format_' + tp.toString('_');
+};
 
 var EOL = '\n';
 
@@ -17,18 +109,18 @@ function indent(v, indentation) {
 }
 
 function pad(str, value, filler) {
-  str = String(str)
+  str = String(str);
   var isRight = false;
 
-  if(value < 0) {
+  if (value < 0) {
     isRight = true;
     value = -value;
   }
 
-  if(str.length < value) {
+  if (str.length < value) {
     var padding = new Array(value - str.length + 1).join(filler);
     return isRight ? str + padding : padding + str;
-  } else{
+  } else {
     return str;
   }
 }
@@ -37,188 +129,10 @@ function pad0(str, value) {
   return pad(str, value, '0');
 }
 
-function genKeysFunc(f) {
-  return function(value) {
-    var k = f(value);
-    k.sort();
-    return k;
-  };
-}
-
-var INDENT = '  ';
-
-function addSpaces(str) {
-  return indent(str, INDENT);
-}
-
-
-function Formatter(opts) {
-  opts = opts || {};
-
-  this.seen = [];
-  var keysFunc;
-  if(typeof opts.keysFunc === 'function') {
-    keysFunc = opts.keysFunc;
-  } else if(opts.keys === false) {
-    keysFunc = Object.getOwnPropertyNames;
-  } else {
-    keysFunc = Object.keys;
-  }
-
-  this.keys = genKeysFunc(keysFunc);
-
-  this.maxLineLength = typeof opts.maxLineLength === 'number' ? opts.maxLineLength : 60;
-  this.propSep = opts.propSep || ',';
-
-  this.isUTCdate = !!opts.isUTCdate;
-}
-
-Formatter.prototype = {
-  constructor: Formatter,
-
-  format: function(value) {
-    var t = getType(value);
-    var name1 = t.type, name2 = t.type;
-    if(t.cls) {
-      name1 += '_' + t.cls;
-      name2 += '_' + t.cls;
-    }
-    if(t.sub) {
-      name2 += '_' + t.sub;
-    }
-    var f = this['_format_' + name2] || this['_format_' + name1] || this['_format_' + t.type] || this.defaultFormat;
-    return f.call(this, value).trim();
-  },
-
-  _formatObject: function(value, opts) {
-    opts = opts || {};
-    var mainKeys = opts.keys || this.keys(value);
-
-    var len = 0;
-
-    var formatPropertyValue = opts.formatPropertyValue || this.formatPropertyValue;
-    var formatPropertyName = opts.formatPropertyName || this.formatPropertyName;
-    var keyValueSep = opts.keyValueSep || ': ';
-    var keyFilter = opts.keyFilter || function() { return true; };
-
-    this.seen.push(value);
-    var keys = [];
-
-    mainKeys.forEach(function(key) {
-      if(!keyFilter(key)) return;
-
-      var fName = formatPropertyName.call(this, key);
-
-      var f = (fName ? fName + keyValueSep : '') + formatPropertyValue.call(this, value, key);
-      len += f.length;
-      keys.push(f);
-    }, this);
-    this.seen.pop();
-
-    (opts.additionalProperties || []).forEach(function(keyValue) {
-      var f = keyValue[0] + keyValueSep + this.format(keyValue[1]);
-      len += f.length;
-      keys.push(f);
-    }, this);
-
-    var prefix = opts.prefix || Formatter.constructorName(value) || '';
-    if(prefix.length > 0) prefix += ' ';
-
-    var lbracket, rbracket;
-    if(Array.isArray(opts.brackets)) {
-      lbracket = opts.brackets && opts.brackets[0];
-      rbracket = opts.brackets && opts.brackets[1];
-    } else {
-      lbracket = '{';
-      rbracket = '}';
-    }
-
-    var rootValue = opts.value || '';
-
-    if(keys.length === 0)
-      return rootValue || (prefix + lbracket + rbracket);
-
-    if(len <= this.maxLineLength) {
-      return prefix + lbracket + ' ' + (rootValue ? rootValue + ' ' : '') + keys.join(this.propSep + ' ') + ' ' + rbracket;
-    } else {
-      return prefix + lbracket + '\n' + (rootValue ? '  ' + rootValue + '\n' : '') + keys.map(addSpaces).join(this.propSep + '\n') + '\n' + rbracket;
-    }
-  },
-
-  formatObject: function(value, prefix, props) {
-    props = props || this.keys(value);
-
-    var len = 0;
-
-    this.seen.push(value);
-    props = props.map(function(prop) {
-      var f = this.formatProperty(value, prop);
-      len += f.length;
-      return f;
-    }, this);
-    this.seen.pop();
-
-    if(props.length === 0) return '{}';
-
-    if(len <= this.maxLineLength) {
-      return '{ ' + (prefix ? prefix + ' ' : '') + props.join(this.propSep + ' ') + ' }';
-    } else {
-      return '{' + '\n' + (prefix ? '  ' + prefix + '\n' : '') + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
-    }
-  },
-
-  formatPropertyName: function(name) {
-    return name.match(/^[a-zA-Z_$][a-zA-Z_$0-9]*$/) ? name : this.format(name);
-  },
-
-  formatProperty: function(value, prop) {
-    var desc = Formatter.getPropertyDescriptor(value, prop);
-
-    var propName = this.formatPropertyName(prop);
-
-    var propValue = desc.get && desc.set ?
-      '[Getter/Setter]' : desc.get ?
-      '[Getter]' : desc.set ?
-      '[Setter]' : this.seen.indexOf(desc.value) >= 0 ?
-      '[Circular]' :
-      this.format(desc.value);
-
-    return propName + ': ' + propValue;
-  },
-
-  formatPropertyValue: function(value, prop) {
-    var desc = Formatter.getPropertyDescriptor(value, prop);
-
-    var propValue = desc.get && desc.set ?
-      '[Getter/Setter]' : desc.get ?
-      '[Getter]' : desc.set ?
-      '[Setter]' : this.seen.indexOf(desc.value) >= 0 ?
-      '[Circular]' :
-      this.format(desc.value);
-
-    return propValue;
-  }
-};
-
-Formatter.add = function add(type, cls, sub, f) {
-  var args = Array.prototype.slice.call(arguments);
-  f = args.pop();
-  Formatter.prototype['_format_' + args.join('_')] = f;
-};
-
-Formatter.formatObjectWithPrefix = function formatObjectWithPrefix(f) {
-  return function(value) {
-    var prefix = f.call(this, value);
-    var props = this.keys(value);
-    if(props.length == 0) return prefix;
-    else return this.formatObject(value, prefix, props);
-  };
-};
-
 var functionNameRE = /^\s*function\s*(\S*)\s*\(/;
 
-Formatter.functionName = function functionName(f) {
-  if(f.name) {
+function functionName(f) {
+  if (f.name) {
     return f.name;
   }
   var matches = f.toString().match(functionNameRE);
@@ -228,131 +142,190 @@ Formatter.functionName = function functionName(f) {
   }
   var name = matches[1];
   return name;
-};
+}
 
-Formatter.constructorName = function(obj) {
+function constructorName(obj) {
   while (obj) {
     var descriptor = Object.getOwnPropertyDescriptor(obj, 'constructor');
-    if (descriptor !== undefined &&
-        typeof descriptor.value === 'function') {
-
-        var name = Formatter.functionName(descriptor.value);
-        if(name !== '') {
-          return name;
-        }
+    if (descriptor !== undefined &&  typeof descriptor.value === 'function') {
+      var name = functionName(descriptor.value);
+      if (name !== '') {
+        return name;
+      }
     }
 
     obj = Object.getPrototypeOf(obj);
   }
-};
+}
 
-Formatter.getPropertyDescriptor = function(obj, value) {
+var INDENT = '  ';
+
+function addSpaces(str) {
+  return indent(str, INDENT);
+}
+
+function typeAdaptorForEachFormat(obj, opts) {
+  opts = opts || {};
+  var filterKey = opts.filterKey || function() { return true; };
+
+  var formatKey = opts.formatKey || this.format;
+  var formatValue = opts.formatValue || this.format;
+
+  var keyValueSep = typeof opts.keyValueSep !== 'undefined' ? opts.keyValueSep : ': ';
+
+  this.seen.push(obj);
+
+  var formatLength = 0;
+  var pairs = [];
+
+  shouldTypeAdaptors.forEach(obj, function(value, key) {
+    if (!filterKey(key)) {
+      return;
+    }
+
+    var formattedKey = formatKey.call(this, key);
+    var formattedValue = formatValue.call(this, value, key);
+
+    var pair = formattedKey ? (formattedKey + keyValueSep + formattedValue) : formattedValue;
+
+    formatLength += pair.length;
+    pairs.push(pair);
+  }, this);
+
+  this.seen.pop();
+
+  (opts.additionalKeys || []).forEach(function(keyValue) {
+    var pair = keyValue[0] + keyValueSep + this.format(keyValue[1]);
+    formatLength += pair.length;
+    pairs.push(pair);
+  }, this);
+
+  var prefix = opts.prefix || constructorName(obj) || '';
+  if (prefix.length > 0) {
+    prefix += ' ';
+  }
+
+  var lbracket, rbracket;
+  if (Array.isArray(opts.brackets)) {
+    lbracket = opts.brackets[0];
+    rbracket = opts.brackets[1];
+  } else {
+    lbracket = '{';
+    rbracket = '}';
+  }
+
+  var rootValue = opts.value || '';
+
+  if (pairs.length === 0) {
+    return rootValue || (prefix + lbracket + rbracket);
+  }
+
+  if (formatLength <= this.maxLineLength) {
+    return prefix + lbracket + ' ' + (rootValue ? rootValue + ' ' : '') + pairs.join(this.propSep + ' ') + ' ' + rbracket;
+  } else {
+    return prefix + lbracket + '\n' + (rootValue ? '  ' + rootValue + '\n' : '') + pairs.map(addSpaces).join(this.propSep + '\n') + '\n' + rbracket;
+  }
+}
+
+function formatPlainObjectKey(key) {
+  return typeof key === 'string' && key.match(/^[a-zA-Z_$][a-zA-Z_$0-9]*$/) ? key : this.format(key);
+}
+
+function getPropertyDescriptor(obj, key) {
   var desc;
   try {
-    desc = Object.getOwnPropertyDescriptor(obj, value) || {value: obj[value]};
-  } catch(e) {
-    desc = {value: e};
+    desc = Object.getOwnPropertyDescriptor(obj, key) || { value: obj[key] };
+  } catch (e) {
+    desc = { value: e };
   }
   return desc;
-};
+}
 
-Formatter.generateFunctionForIndexedArray = function generateFunctionForIndexedArray(lengthProp, name, padding) {
-  return function(value) {
-    var max = this.byteArrayMaxLength || 50;
-    var length = value[lengthProp];
-    var formattedValues = [];
-    var len = 0;
-    for(var i = 0; i < max && i < length; i++) {
-      var b = value[i] || 0;
-      var v = pad0(b.toString(16), padding);
-      len += v.length;
-      formattedValues.push(v);
-    }
-    var prefix = value.constructor.name || name || '';
-    if(prefix) prefix += ' ';
+function formatPlainObjectValue(obj, key) {
+  var desc = getPropertyDescriptor(obj, key);
+  if (desc.get && desc.set) {
+    return '[Getter/Setter]';
+  }
+  if (desc.get) {
+    return '[Getter]';
+  }
+  if (desc.set) {
+    return '[Setter]';
+  }
 
-    if(formattedValues.length === 0)
-      return prefix + '[]';
+  return this.format(desc.value);
+}
 
-    if(len <= this.maxLineLength) {
-      return prefix + '[ ' + formattedValues.join(this.propSep + ' ') + ' ' + ']';
-    } else {
-      return prefix + '[\n' + formattedValues.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
-    }
+function formatPlainObject(obj, opts) {
+  opts = opts || {};
+  opts.keyValueSep = ': ';
+  opts.formatKey = opts.formatKey || formatPlainObjectKey;
+  opts.formatValue = opts.formatValue || function(value, key) {
+    return formatPlainObjectValue.call(this, obj, key);
   };
-};
+  return typeAdaptorForEachFormat.call(this, obj, opts);
+}
 
-Formatter.add('undefined', function() { return 'undefined' });
-Formatter.add('null', function() { return 'null' });
-Formatter.add('boolean', function(value) { return value ? 'true': 'false' });
-Formatter.add('symbol', function(value) { return value.toString() });
-
-['number', 'boolean'].forEach(function(name) {
-  Formatter.add('object', name, function(value) {
-    return this._formatObject(value, {
-      additionalProperties: [['[[PrimitiveValue]]', value.valueOf()]]
-    });
+function formatWrapper1(value) {
+  return formatPlainObject.call(this, value, {
+    additionalKeys: [['[[PrimitiveValue]]', value.valueOf()]]
   });
-});
+}
 
-Formatter.add('object', 'string', function(value) {
+
+function formatWrapper2(value) {
   var realValue = value.valueOf();
 
-  return this._formatObject(value, {
-    keyFilter: function(key) {
+  return formatPlainObject.call(this, value, {
+    filterKey: function(key) {
       //skip useless indexed properties
       return !(key.match(/\d+/) && parseInt(key, 10) < realValue.length);
     },
-    additionalProperties: [['[[PrimitiveValue]]', realValue]]
+    additionalKeys: [['[[PrimitiveValue]]', realValue]]
   });
-});
+}
 
-Formatter.add('object', 'regexp', function(value) {
-  return this._formatObject(value, {
+function formatRegExp(value) {
+  return formatPlainObject.call(this, value, {
     value: String(value)
   });
-});
+}
 
-Formatter.add('number', function(value) {
-  if(value === 0 && 1 / value < 0) return '-0';
-  return String(value);
-});
+function formatFunction(value) {
+  var obj = {};
+  Object.keys(value).forEach(function(key) {
+    obj[key] = value[key];
+  });
+  return formatPlainObject.call(this, obj, {
+    prefix: 'Function',
+    additionalKeys: [['name', functionName(value)]]
+  });
+}
 
-Formatter.add('string', function(value) {
-  return '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
-      .replace(/'/g, "\\'")
-      .replace(/\\"/g, '"') + '\'';
-});
-
-Formatter.add('object', function(value) {
-  return this._formatObject(value);
-});
-
-Formatter.add('object', 'arguments', function(value) {
-  return this._formatObject(value, {
-    prefix: 'Arguments',
-    formatPropertyName: function(key) {
-      if(!key.match(/\d+/)) {
-        return this.formatPropertyName(key);
+function formatArray(value) {
+  return formatPlainObject.call(this, value, {
+    formatKey: function(key) {
+      if (!key.match(/\d+/)) {
+        return formatPlainObjectKey.call(this, key);
       }
     },
     brackets: ['[', ']']
   });
-});
+}
 
-Formatter.add('object', 'array', function(value) {
-  return this._formatObject(value, {
-    formatPropertyName: function(key) {
-      if(!key.match(/\d+/)) {
-        return this.formatPropertyName(key);
+function formatArguments(value) {
+  return formatPlainObject.call(this, value, {
+    formatKey: function(key) {
+      if (!key.match(/\d+/)) {
+        return formatPlainObjectKey.call(this, key);
       }
     },
-    brackets: ['[', ']']
+    brackets: ['[', ']'],
+    prefix: 'Arguments'
   });
-});
+}
 
-
-function formatDate(value, isUTC) {
+function _formatDate(value, isUTC) {
   var prefix = isUTC ? 'UTC' : '';
 
   var date = value['get' + prefix + 'FullYear']() +
@@ -378,140 +351,184 @@ function formatDate(value, isUTC) {
   return date + ' ' + time + (isUTC ? '' : ' ' + tzFormat);
 }
 
-Formatter.add('object', 'date', function(value) {
-  return this._formatObject(value, { value: formatDate(value, this.isUTCdate) });
-});
+function formatDate(value) {
+  return formatPlainObject.call(this, value, { value: _formatDate(value, this.isUTCdate) });
+}
 
-Formatter.add('function', function(value) {
-  return this._formatObject(value, {
-    additionalProperties: [['name', Formatter.functionName(value)]]
-  });
-});
-
-Formatter.add('object', 'error', function(value) {
-  return this._formatObject(value, {
+function formatError(value) {
+  return formatPlainObject.call(this, value, {
     prefix: value.name,
-    additionalProperties: [['message', value.message]]
+    additionalKeys: [['message', value.message]]
   });
-});
+}
 
-Formatter.add('object', 'buffer', Formatter.generateFunctionForIndexedArray('length', 'Buffer', 2));
-
-Formatter.add('object', 'array-buffer', Formatter.generateFunctionForIndexedArray('byteLength', 'ArrayBuffer', 2));
-
-Formatter.add('object', 'typed-array', 'int8', Formatter.generateFunctionForIndexedArray('length', 'Int8Array', 2));
-Formatter.add('object', 'typed-array', 'uint8', Formatter.generateFunctionForIndexedArray('length', 'Uint8Array', 2));
-Formatter.add('object', 'typed-array', 'uint8clamped', Formatter.generateFunctionForIndexedArray('length', 'Uint8ClampedArray', 2));
-
-Formatter.add('object', 'typed-array', 'int16', Formatter.generateFunctionForIndexedArray('length', 'Int16Array', 4));
-Formatter.add('object', 'typed-array', 'uint16', Formatter.generateFunctionForIndexedArray('length', 'Uint16Array', 4));
-
-Formatter.add('object', 'typed-array', 'int32', Formatter.generateFunctionForIndexedArray('length', 'Int32Array', 8));
-Formatter.add('object', 'typed-array', 'uint32', Formatter.generateFunctionForIndexedArray('length', 'Uint32Array', 8));
-
-//TODO add float32 and float64
-
-Formatter.add('object', 'promise', function() {
-  return '[Promise]';//TODO it could be nice to inspect its state and value
-});
-
-Formatter.add('object', 'xhr', function() {
-  return '[XMLHttpRequest]';//TODO it could be nice to inspect its state
-});
-
-Formatter.add('object', 'html-element', function(value) {
-  return value.outerHTML;
-});
-
-Formatter.add('object', 'html-element', '#text', function(value) {
-  return value.nodeValue;
-});
-
-Formatter.add('object', 'html-element', '#document', function(value) {
-  return value.documentElement.outerHTML;
-});
-
-Formatter.add('object', 'host', function() {
-  return '[Host]';
-});
-
-Formatter.add('object', 'set', function(value) {
-  var iter = value.values();
-  var len = 0;
-
-  this.seen.push(value);
-
-  var props = [];
-
-  var next = iter.next();
-  while(!next.done) {
-    var val = next.value;
-    var f = this.format(val);
-    len += f.length;
-    props.push(f);
-
-    next = iter.next();
-  }
-
-  this.seen.pop();
-
-  if(props.length === 0) return 'Set {}';
-
-  if(len <= this.maxLineLength) {
-    return 'Set { ' + props.join(this.propSep + ' ') + ' }';
-  } else {
-    return 'Set {\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
-  }
-});
-
-Formatter.add('object', 'map', function(value) {
-  var iter = value.entries();
-  var len = 0;
-
-  this.seen.push(value);
-
-  var props = [];
-
-  var next = iter.next();
-  while(!next.done) {
-    var val = next.value;
-    var fK = this.format(val[0]);
-    var fV = this.format(val[1]);
-
-    var f;
-    if((fK.length + fV.length + 4) <= this.maxLineLength) {
-      f = fK + ' => ' + fV;
-    } else {
-      f = fK + ' =>\n' + fV;
+function generateFormatForNumberArray(lengthProp, name, padding) {
+  return function(value) {
+    var max = this.byteArrayMaxLength || 50;
+    var length = value[lengthProp];
+    var formattedValues = [];
+    var len = 0;
+    for (var i = 0; i < max && i < length; i++) {
+      var b = value[i] || 0;
+      var v = pad0(b.toString(16), padding);
+      len += v.length;
+      formattedValues.push(v);
+    }
+    var prefix = value.constructor.name || name || '';
+    if (prefix) {
+      prefix += ' ';
     }
 
-    len += fK.length + fV.length + 4;
-    props.push(f);
+    if (formattedValues.length === 0) {
+      return prefix + '[]';
+    }
 
-    next = iter.next();
-  }
+    if (len <= this.maxLineLength) {
+      return prefix + '[ ' + formattedValues.join(this.propSep + ' ') + ' ' + ']';
+    } else {
+      return prefix + '[\n' + formattedValues.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
+    }
+  };
+}
 
-  this.seen.pop();
+function formatMap(obj) {
+  return typeAdaptorForEachFormat.call(this, obj, {
+    keyValueSep: ' => '
+  });
+}
 
-  if(props.length === 0) return 'Map {}';
+function formatSet(obj) {
+  return typeAdaptorForEachFormat.call(this, obj, {
+    keyValueSep: '',
+    formatKey: function() { return ''; }
+  });
+}
 
-  if(len <= this.maxLineLength) {
-    return 'Map { ' + props.join(this.propSep + ' ') + ' }';
-  } else {
-    return 'Map {\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + '}';
-  }
-});
+function genSimdVectorFormat(constructorName, length) {
+  return function(value) {
+    var Constructor = value.constructor;
+    var extractLane = Constructor.extractLane;
 
-Formatter.prototype.defaultFormat = Formatter.prototype._format_object;
+    var len = 0;
+    var props = [];
+
+    for (var i = 0; i < length; i ++) {
+      var key = this.format(extractLane(value, i));
+      len += key.length;
+      props.push(key);
+    }
+
+    if (len <= this.maxLineLength) {
+      return constructorName + ' [ ' + props.join(this.propSep + ' ') + ' ]';
+    } else {
+      return constructorName + ' [\n' + props.map(addSpaces).join(this.propSep + '\n') + '\n' + ']';
+    }
+  };
+}
 
 function defaultFormat(value, opts) {
   return new Formatter(opts).format(value);
 }
 
 defaultFormat.Formatter = Formatter;
+// adding primitive types
+Formatter.addType(new t.Type(t.UNDEFINED), function() {
+  return 'undefined';
+});
+Formatter.addType(new t.Type(t.NULL), function() {
+  return 'null';
+});
+Formatter.addType(new t.Type(t.BOOLEAN), function(value) {
+  return value ? 'true': 'false';
+});
+Formatter.addType(new t.Type(t.SYMBOL), function(value) {
+  return value.toString();
+});
+Formatter.addType(new t.Type(t.NUMBER), function(value) {
+  if (value === 0 && 1 / value < 0) {
+    return '-0';
+  }
+  return String(value);
+});
+
+Formatter.addType(new t.Type(t.STRING), function(value) {
+  return '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
+      .replace(/'/g, "\\'")
+      .replace(/\\"/g, '"') + '\'';
+});
+
+Formatter.addType(new t.Type(t.FUNCTION), formatFunction);
+
+// plain object
+Formatter.addType(new t.Type(t.OBJECT), formatPlainObject);
+
+// type wrappers
+Formatter.addType(new t.Type(t.OBJECT, t.NUMBER), formatWrapper1);
+Formatter.addType(new t.Type(t.OBJECT, t.BOOLEAN), formatWrapper1);
+Formatter.addType(new t.Type(t.OBJECT, t.STRING), formatWrapper2);
+
+Formatter.addType(new t.Type(t.OBJECT, t.REGEXP), formatRegExp);
+Formatter.addType(new t.Type(t.OBJECT, t.ARRAY), formatArray);
+Formatter.addType(new t.Type(t.OBJECT, t.ARGUMENTS), formatArguments);
+Formatter.addType(new t.Type(t.OBJECT, t.DATE), formatDate);
+Formatter.addType(new t.Type(t.OBJECT, t.ERROR), formatError);
+Formatter.addType(new t.Type(t.OBJECT, t.SET), formatSet);
+Formatter.addType(new t.Type(t.OBJECT, t.MAP), formatMap);
+Formatter.addType(new t.Type(t.OBJECT, t.WEAK_MAP), formatMap);
+Formatter.addType(new t.Type(t.OBJECT, t.WEAK_SET), formatSet);
+
+Formatter.addType(new t.Type(t.OBJECT, t.BUFFER), generateFormatForNumberArray('length', 'Buffer', 2));
+
+Formatter.addType(new t.Type(t.OBJECT, t.ARRAY_BUFFER), generateFormatForNumberArray('byteLength', 'ArrayBuffer', 2));
+
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'int8'), generateFormatForNumberArray('length', 'Int8Array', 2));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint8'), generateFormatForNumberArray('length', 'Uint8Array', 2));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint8clamped'), generateFormatForNumberArray('length', 'Uint8ClampedArray', 2));
+
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'int16'), generateFormatForNumberArray('length', 'Int16Array', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint16'), generateFormatForNumberArray('length', 'Uint16Array', 4));
+
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'int32'), generateFormatForNumberArray('length', 'Int32Array', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.TYPED_ARRAY, 'uint32'), generateFormatForNumberArray('length', 'Uint32Array', 8));
+
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'bool16x8'), genSimdVectorFormat('Bool16x8', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'bool32x4'), genSimdVectorFormat('Bool32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'bool8x16'), genSimdVectorFormat('Bool8x16', 16));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'float32x4'), genSimdVectorFormat('Float32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'int16x8'), genSimdVectorFormat('Int16x8', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'int32x4'), genSimdVectorFormat('Int32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'int8x16'), genSimdVectorFormat('Int8x16', 16));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'uint16x8'), genSimdVectorFormat('Uint16x8', 8));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'uint32x4'), genSimdVectorFormat('Uint32x4', 4));
+Formatter.addType(new t.Type(t.OBJECT, t.SIMD, 'uint8x16'), genSimdVectorFormat('Uint8x16', 16));
+
+
+Formatter.addType(new t.Type(t.OBJECT, t.PROMISE), function() {
+  return '[Promise]';//TODO it could be nice to inspect its state and value
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.XHR), function() {
+  return '[XMLHttpRequest]';//TODO it could be nice to inspect its state
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HTML_ELEMENT), function(value) {
+  return value.outerHTML;
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HTML_ELEMENT, '#text'), function(value) {
+  return value.nodeValue;
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HTML_ELEMENT, '#document'), function(value) {
+  return value.documentElement.outerHTML;
+});
+
+Formatter.addType(new t.Type(t.OBJECT, t.HOST), function() {
+  return '[Host]';
+});
 
 module.exports = defaultFormat;
-},{"should-type":9}],2:[function(require,module,exports){
+},{"should-type":11,"should-type-adaptors":9}],2:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -872,7 +889,7 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":11}],3:[function(require,module,exports){
+},{"util/":14}],3:[function(require,module,exports){
 'use strict'
 
 exports.toByteArray = toByteArray
@@ -1039,7 +1056,7 @@ exports.kMaxLength = kMaxLength()
 function typedArraySupport () {
   try {
     var arr = new Uint8Array(1)
-    arr.foo = function () { return 42 }
+    arr.__proto__ = {__proto__: Uint8Array.prototype, foo: function () { return 42 }}
     return arr.foo() === 42 && // typed array instances can be augmented
         typeof arr.subarray === 'function' && // chrome 9-10 lack `subarray`
         arr.subarray(1, 1).byteLength === 0 // ie10 has broken `subarray`
@@ -1183,7 +1200,7 @@ function allocUnsafe (that, size) {
   assertSize(size)
   that = createBuffer(that, size < 0 ? 0 : checked(size) | 0)
   if (!Buffer.TYPED_ARRAY_SUPPORT) {
-    for (var i = 0; i < size; i++) {
+    for (var i = 0; i < size; ++i) {
       that[i] = 0
     }
   }
@@ -1239,7 +1256,9 @@ function fromArrayBuffer (that, array, byteOffset, length) {
     throw new RangeError('\'length\' is out of bounds')
   }
 
-  if (length === undefined) {
+  if (byteOffset === undefined && length === undefined) {
+    array = new Uint8Array(array)
+  } else if (length === undefined) {
     array = new Uint8Array(array, byteOffset)
   } else {
     array = new Uint8Array(array, byteOffset, length)
@@ -1361,14 +1380,14 @@ Buffer.concat = function concat (list, length) {
   var i
   if (length === undefined) {
     length = 0
-    for (i = 0; i < list.length; i++) {
+    for (i = 0; i < list.length; ++i) {
       length += list[i].length
     }
   }
 
   var buffer = Buffer.allocUnsafe(length)
   var pos = 0
-  for (i = 0; i < list.length; i++) {
+  for (i = 0; i < list.length; ++i) {
     var buf = list[i]
     if (!Buffer.isBuffer(buf)) {
       throw new TypeError('"list" argument must be an Array of Buffers')
@@ -1400,7 +1419,6 @@ function byteLength (string, encoding) {
     switch (encoding) {
       case 'ascii':
       case 'binary':
-      // Deprecated
       case 'raw':
       case 'raws':
         return len
@@ -1638,15 +1656,16 @@ function arrayIndexOf (arr, val, byteOffset, encoding) {
   }
 
   var foundIndex = -1
-  for (var i = 0; byteOffset + i < arrLength; i++) {
-    if (read(arr, byteOffset + i) === read(val, foundIndex === -1 ? 0 : i - foundIndex)) {
+  for (var i = byteOffset; i < arrLength; ++i) {
+    if (read(arr, i) === read(val, foundIndex === -1 ? 0 : i - foundIndex)) {
       if (foundIndex === -1) foundIndex = i
-      if (i - foundIndex + 1 === valLength) return (byteOffset + foundIndex) * indexSize
+      if (i - foundIndex + 1 === valLength) return foundIndex * indexSize
     } else {
       if (foundIndex !== -1) i -= i - foundIndex
       foundIndex = -1
     }
   }
+
   return -1
 }
 
@@ -1711,7 +1730,7 @@ function hexWrite (buf, string, offset, length) {
   if (length > strLen / 2) {
     length = strLen / 2
   }
-  for (var i = 0; i < length; i++) {
+  for (var i = 0; i < length; ++i) {
     var parsed = parseInt(string.substr(i * 2, 2), 16)
     if (isNaN(parsed)) return i
     buf[offset + i] = parsed
@@ -1925,7 +1944,7 @@ function asciiSlice (buf, start, end) {
   var ret = ''
   end = Math.min(buf.length, end)
 
-  for (var i = start; i < end; i++) {
+  for (var i = start; i < end; ++i) {
     ret += String.fromCharCode(buf[i] & 0x7F)
   }
   return ret
@@ -1935,7 +1954,7 @@ function binarySlice (buf, start, end) {
   var ret = ''
   end = Math.min(buf.length, end)
 
-  for (var i = start; i < end; i++) {
+  for (var i = start; i < end; ++i) {
     ret += String.fromCharCode(buf[i])
   }
   return ret
@@ -1948,7 +1967,7 @@ function hexSlice (buf, start, end) {
   if (!end || end < 0 || end > len) end = len
 
   var out = ''
-  for (var i = start; i < end; i++) {
+  for (var i = start; i < end; ++i) {
     out += toHex(buf[i])
   }
   return out
@@ -1991,7 +2010,7 @@ Buffer.prototype.slice = function slice (start, end) {
   } else {
     var sliceLen = end - start
     newBuf = new Buffer(sliceLen, undefined)
-    for (var i = 0; i < sliceLen; i++) {
+    for (var i = 0; i < sliceLen; ++i) {
       newBuf[i] = this[i + start]
     }
   }
@@ -2218,7 +2237,7 @@ Buffer.prototype.writeUInt8 = function writeUInt8 (value, offset, noAssert) {
 
 function objectWriteUInt16 (buf, value, offset, littleEndian) {
   if (value < 0) value = 0xffff + value + 1
-  for (var i = 0, j = Math.min(buf.length - offset, 2); i < j; i++) {
+  for (var i = 0, j = Math.min(buf.length - offset, 2); i < j; ++i) {
     buf[offset + i] = (value & (0xff << (8 * (littleEndian ? i : 1 - i)))) >>>
       (littleEndian ? i : 1 - i) * 8
   }
@@ -2252,7 +2271,7 @@ Buffer.prototype.writeUInt16BE = function writeUInt16BE (value, offset, noAssert
 
 function objectWriteUInt32 (buf, value, offset, littleEndian) {
   if (value < 0) value = 0xffffffff + value + 1
-  for (var i = 0, j = Math.min(buf.length - offset, 4); i < j; i++) {
+  for (var i = 0, j = Math.min(buf.length - offset, 4); i < j; ++i) {
     buf[offset + i] = (value >>> (littleEndian ? i : 3 - i) * 8) & 0xff
   }
 }
@@ -2467,12 +2486,12 @@ Buffer.prototype.copy = function copy (target, targetStart, start, end) {
 
   if (this === target && start < targetStart && targetStart < end) {
     // descending copy from end
-    for (i = len - 1; i >= 0; i--) {
+    for (i = len - 1; i >= 0; --i) {
       target[i + targetStart] = this[i + start]
     }
   } else if (len < 1000 || !Buffer.TYPED_ARRAY_SUPPORT) {
     // ascending copy from start
-    for (i = 0; i < len; i++) {
+    for (i = 0; i < len; ++i) {
       target[i + targetStart] = this[i + start]
     }
   } else {
@@ -2533,7 +2552,7 @@ Buffer.prototype.fill = function fill (val, start, end, encoding) {
 
   var i
   if (typeof val === 'number') {
-    for (i = start; i < end; i++) {
+    for (i = start; i < end; ++i) {
       this[i] = val
     }
   } else {
@@ -2541,7 +2560,7 @@ Buffer.prototype.fill = function fill (val, start, end, encoding) {
       ? val
       : utf8ToBytes(new Buffer(val, encoding).toString())
     var len = bytes.length
-    for (i = 0; i < end - start; i++) {
+    for (i = 0; i < end - start; ++i) {
       this[i + start] = bytes[i % len]
     }
   }
@@ -2583,7 +2602,7 @@ function utf8ToBytes (string, units) {
   var leadSurrogate = null
   var bytes = []
 
-  for (var i = 0; i < length; i++) {
+  for (var i = 0; i < length; ++i) {
     codePoint = string.charCodeAt(i)
 
     // is surrogate component
@@ -2658,7 +2677,7 @@ function utf8ToBytes (string, units) {
 
 function asciiToBytes (str) {
   var byteArray = []
-  for (var i = 0; i < str.length; i++) {
+  for (var i = 0; i < str.length; ++i) {
     // Node's code seems to be doing this and not & 0x7F..
     byteArray.push(str.charCodeAt(i) & 0xFF)
   }
@@ -2668,7 +2687,7 @@ function asciiToBytes (str) {
 function utf16leToBytes (str, units) {
   var c, hi, lo
   var byteArray = []
-  for (var i = 0; i < str.length; i++) {
+  for (var i = 0; i < str.length; ++i) {
     if ((units -= 2) < 0) break
 
     c = str.charCodeAt(i)
@@ -2686,7 +2705,7 @@ function base64ToBytes (str) {
 }
 
 function blitBuffer (src, dst, offset, length) {
-  for (var i = 0; i < length; i++) {
+  for (var i = 0; i < length; ++i) {
     if ((i + offset >= dst.length) || (i >= src.length)) break
     dst[i + offset] = src[i]
   }
@@ -2820,6 +2839,31 @@ module.exports = Array.isArray || function (arr) {
 // shim for using process in browser
 
 var process = module.exports = {};
+
+// cached from whatever global is present so that test runners that stub it
+// don't break things.  But we need to wrap it in a try catch in case it is
+// wrapped in strict mode code which doesn't define any globals.  It's inside a
+// function because try/catches deoptimize in certain engines.
+
+var cachedSetTimeout;
+var cachedClearTimeout;
+
+(function () {
+  try {
+    cachedSetTimeout = setTimeout;
+  } catch (e) {
+    cachedSetTimeout = function () {
+      throw new Error('setTimeout is not defined');
+    }
+  }
+  try {
+    cachedClearTimeout = clearTimeout;
+  } catch (e) {
+    cachedClearTimeout = function () {
+      throw new Error('clearTimeout is not defined');
+    }
+  }
+} ())
 var queue = [];
 var draining = false;
 var currentQueue;
@@ -2844,7 +2888,7 @@ function drainQueue() {
     if (draining) {
         return;
     }
-    var timeout = setTimeout(cleanUpNextTick);
+    var timeout = cachedSetTimeout(cleanUpNextTick);
     draining = true;
 
     var len = queue.length;
@@ -2861,7 +2905,7 @@ function drainQueue() {
     }
     currentQueue = null;
     draining = false;
-    clearTimeout(timeout);
+    cachedClearTimeout(timeout);
 }
 
 process.nextTick = function (fun) {
@@ -2873,7 +2917,7 @@ process.nextTick = function (fun) {
     }
     queue.push(new Item(fun, args));
     if (queue.length === 1 && !draining) {
-        setTimeout(drainQueue, 0);
+        cachedSetTimeout(drainQueue, 0);
     }
 };
 
@@ -2913,6 +2957,288 @@ process.chdir = function (dir) {
 process.umask = function() { return 0; };
 
 },{}],9:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, '__esModule', { value: true });
+
+function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
+
+var shouldUtil = require('should-util');
+var t = _interopDefault(require('should-type'));
+
+// TODO in future add generators instead of forEach and iterator implementation
+
+
+function ObjectIterator(obj) {
+  this._obj = obj;
+}
+
+ObjectIterator.prototype = {
+  __shouldIterator__: true, // special marker
+
+  next: function() {
+    if (this._done) {
+      throw new Error('Iterator already reached the end');
+    }
+
+    if (!this._keys) {
+      this._keys = Object.keys(this._obj);
+      this._index = 0;
+    }
+
+    var key = this._keys[this._index];
+    this._done = this._index === this._keys.length;
+    this._index += 1;
+
+    return {
+      value: this._done ? void 0: [key, this._obj[key]],
+      done: this._done
+    };
+  }
+};
+
+if (typeof Symbol === 'function' && typeof Symbol.iterator === 'symbol') {
+  ObjectIterator.prototype[Symbol.iterator] = function() {
+    return this;
+  };
+}
+
+
+function TypeAdaptorStorage() {
+  this._typeAdaptors = [];
+  this._iterableTypes = {};
+}
+
+TypeAdaptorStorage.prototype = {
+  add: function(type, cls, sub, adaptor) {
+    return this.addType(new t.Type(type, cls, sub), adaptor);
+  },
+
+  addType: function(type, adaptor) {
+    this._typeAdaptors[type.toString()] = adaptor;
+  },
+
+  getAdaptor: function(tp, funcName) {
+    var tries = tp.toTryTypes();
+    while (tries.length) {
+      var toTry = tries.shift();
+      var ad = this._typeAdaptors[toTry];
+      if (ad && ad[funcName]) {
+        return ad[funcName];
+      }
+    }
+  },
+
+  requireAdaptor: function(tp, funcName) {
+    var a = this.getAdaptor(tp, funcName);
+    if (!a) {
+      throw new Error('There is no type adaptor `' + funcName + '` for ' + tp.toString());
+    }
+    return a;
+  },
+
+  addIterableType: function(tp) {
+    this._iterableTypes[tp.toString()] = true;
+  },
+
+  isIterableType: function(tp) {
+    return !!this._iterableTypes[tp.toString()];
+  }
+};
+
+var defaultTypeAdaptorStorage = new TypeAdaptorStorage();
+
+// default for objects
+defaultTypeAdaptorStorage.addType(new t.Type(t.OBJECT), {
+  forEach: function(obj, f, context) {
+    for (var prop in obj) {
+      if (shouldUtil.hasOwnProperty(obj, prop) && shouldUtil.propertyIsEnumerable(obj, prop)) {
+        if (f.call(context, obj[prop], prop, obj) === false) {
+          return;
+        }
+      }
+    }
+  },
+
+  has: function(obj, prop) {
+    return shouldUtil.hasOwnProperty(obj, prop);
+  },
+
+  get: function(obj, prop) {
+    return obj[prop];
+  },
+
+  iterator: function(obj) {
+    return new ObjectIterator(obj);
+  }
+});
+
+var mapAdaptor = {
+  has: function(obj, key) {
+    return obj.has(key);
+  },
+
+  get: function(obj, key) {
+    return obj.get(key);
+  },
+
+  forEach: function(obj, f, context) {
+    var iter = obj.entries();
+    forEach(iter, function(value) {
+      return f.call(context, value[1], value[0], obj);
+    });
+  },
+
+  size: function(obj) {
+    return obj.size;
+  },
+
+  isEmpty: function(obj) {
+    return obj.size === 0;
+  },
+
+  iterator: function(obj) {
+    return obj.entries();
+  }
+};
+
+var setAdaptor = shouldUtil.merge({}, mapAdaptor);
+setAdaptor.get = function(obj, key) {
+  if (obj.has(key)) {
+    return key;
+  }
+};
+
+defaultTypeAdaptorStorage.addType(new t.Type(t.OBJECT, t.MAP), mapAdaptor);
+defaultTypeAdaptorStorage.addType(new t.Type(t.OBJECT, t.SET), setAdaptor);
+defaultTypeAdaptorStorage.addType(new t.Type(t.OBJECT, t.WEAK_SET), setAdaptor);
+defaultTypeAdaptorStorage.addType(new t.Type(t.OBJECT, t.WEAK_MAP), mapAdaptor);
+
+defaultTypeAdaptorStorage.addType(new t.Type(t.STRING), {
+  isEmpty: function(obj) {
+    return obj === '';
+  },
+
+  size: function(obj) {
+    return obj.length;
+  }
+});
+
+defaultTypeAdaptorStorage.addIterableType(new t.Type(t.OBJECT, t.ARRAY));
+defaultTypeAdaptorStorage.addIterableType(new t.Type(t.OBJECT, t.ARGUMENTS));
+
+function forEach(obj, f, context) {
+  if (shouldUtil.isGeneratorFunction(obj)) {
+    return forEach(obj(), f, context);
+  } else if (shouldUtil.isIterator(obj)) {
+    var value = obj.next();
+    while (!value.done) {
+      if (f.call(context, value.value, 'value', obj) === false) {
+        return;
+      }
+      value = obj.next();
+    }
+  } else {
+    var type = t(obj);
+    var func = defaultTypeAdaptorStorage.requireAdaptor(type, 'forEach');
+    func(obj, f, context);
+  }
+}
+
+
+function size(obj) {
+  var type = t(obj);
+  var func = defaultTypeAdaptorStorage.getAdaptor(type, 'size');
+  if (func) {
+    return func(obj);
+  } else {
+    var len = 0;
+    forEach(obj, function() {
+      len += 1;
+    });
+    return len;
+  }
+}
+
+function isEmpty(obj) {
+  var type = t(obj);
+  var func = defaultTypeAdaptorStorage.getAdaptor(type, 'isEmpty');
+  if (func) {
+    return func(obj);
+  } else {
+    var res = true;
+    forEach(obj, function() {
+      res = false;
+      return false;
+    });
+    return res;
+  }
+}
+
+// return boolean if obj has such 'key'
+function has(obj, key) {
+  var type = t(obj);
+  var func = defaultTypeAdaptorStorage.requireAdaptor(type, 'has');
+  return func(obj, key);
+}
+
+// return value for given key
+function get(obj, key) {
+  var type = t(obj);
+  var func = defaultTypeAdaptorStorage.requireAdaptor(type, 'get');
+  return func(obj, key);
+}
+
+function reduce(obj, f, initialValue) {
+  var res = initialValue;
+  forEach(obj, function(value, key) {
+    res = f(res, value, key, obj);
+  });
+  return res;
+}
+
+function some(obj, f, context) {
+  var res = false;
+  forEach(obj, function(value, key) {
+    if (f.call(context, value, key, obj)) {
+      res = true;
+      return false;
+    }
+  }, context);
+  return res;
+}
+
+function every(obj, f, context) {
+  var res = true;
+  forEach(obj, function(value, key) {
+    if (!f.call(context, value, key, obj)) {
+      res = false;
+      return false;
+    }
+  }, context);
+  return res;
+}
+
+function isIterable(obj) {
+  return defaultTypeAdaptorStorage.isIterableType(t(obj));
+}
+
+function iterator(obj) {
+  return defaultTypeAdaptorStorage.requireAdaptor(t(obj), 'iterator')(obj);
+}
+
+exports.defaultTypeAdaptorStorage = defaultTypeAdaptorStorage;
+exports.forEach = forEach;
+exports.size = size;
+exports.isEmpty = isEmpty;
+exports.has = has;
+exports.get = get;
+exports.reduce = reduce;
+exports.some = some;
+exports.every = every;
+exports.isIterable = isIterable;
+exports.iterator = iterator;
+},{"should-type":10,"should-util":12}],10:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -2980,10 +3306,40 @@ var toString = Object.prototype.toString;
  * new Type('object', 'typed-array', 'uint8');
  */
 function Type(type, cls, sub) {
+  if (!type) {
+    throw new Error('Type class must be initialized at least with `type` information');
+  }
   this.type = type;
   this.cls = cls;
   this.sub = sub;
 }
+
+Type.prototype = {
+  toString: function(sep) {
+    sep = sep || ';';
+    var str = [this.type];
+    if (this.cls) {
+      str.push(this.cls);
+    }
+    if (this.sub) {
+      str.push(this.sub);
+    }
+    return str.join(sep);
+  },
+
+  toTryTypes: function() {
+    var _types = [];
+    if (this.sub) {
+      _types.push(new Type(this.type, this.cls, this.sub));
+    }
+    if (this.cls) {
+      _types.push(new Type(this.type, this.cls));
+    }
+    _types.push(new Type(this.type));
+
+    return _types;
+  }
+};
 
 /**
  * Function to store type checks
@@ -3001,7 +3357,7 @@ TypeChecker.prototype = {
 
   addTypeOf: function(type, res) {
     return this.add(function(obj, tpeOf) {
-      if(tpeOf === type) {
+      if (tpeOf === type) {
         return new Type(res);
       }
     });
@@ -3009,7 +3365,7 @@ TypeChecker.prototype = {
 
   addClass: function(cls, res, sub) {
     return this.add(function(obj, tpeOf, objCls) {
-      if(objCls === cls) {
+      if (objCls === cls) {
         return new Type(types.OBJECT, res, sub);
       }
     });
@@ -3019,9 +3375,11 @@ TypeChecker.prototype = {
     var typeOf = typeof obj;
     var cls = toString.call(obj);
 
-    for(var i = 0, l = this.checks.length; i < l; i++) {
+    for (var i = 0, l = this.checks.length; i < l; i++) {
       var res = this.checks[i].call(this, obj, typeOf, cls);
-      if(typeof res !== 'undefined') return res;
+      if (typeof res !== 'undefined') {
+        return res;
+      }
     }
 
   }
@@ -3038,8 +3396,10 @@ main
   .addTypeOf(types.BOOLEAN, types.BOOLEAN)
   .addTypeOf(types.FUNCTION, types.FUNCTION)
   .addTypeOf(types.SYMBOL, types.SYMBOL)
-  .add(function(obj, tpeOf) {
-    if(obj === null) return new Type(types.NULL);
+  .add(function(obj) {
+    if (obj === null) {
+      return new Type(types.NULL);
+    }
   })
   .addClass('[object String]', types.STRING)
   .addClass('[object Boolean]', types.BOOLEAN)
@@ -3083,24 +3443,24 @@ main
   .addClass('[object FileList]', types.FILE_LIST)
   .addClass('[object XMLHttpRequest]', types.XHR)
   .add(function(obj) {
-    if((typeof Promise === types.FUNCTION && obj instanceof Promise) ||
+    if ((typeof Promise === types.FUNCTION && obj instanceof Promise) ||
         (typeof obj.then === types.FUNCTION)) {
           return new Type(types.OBJECT, types.PROMISE);
         }
   })
   .add(function(obj) {
-    if(typeof Buffer !== 'undefined' && obj instanceof Buffer) {
+    if (typeof Buffer !== 'undefined' && obj instanceof Buffer) {// eslint-disable-line no-undef
       return new Type(types.OBJECT, types.BUFFER);
     }
   })
   .add(function(obj) {
-    if(typeof Node !== 'undefined' && obj instanceof Node) {
+    if (typeof Node !== 'undefined' && obj instanceof Node) {
       return new Type(types.OBJECT, types.HTML_ELEMENT, obj.nodeName);
     }
   })
   .add(function(obj) {
     // probably at the begginging should be enough these checks
-    if(obj.Boolean === Boolean && obj.Number === Number && obj.String === String && obj.Date === Date) {
+    if (obj.Boolean === Boolean && obj.Number === Number && obj.String === String && obj.Date === Date) {
       return new Type(types.OBJECT, types.HOST);
     }
   })
@@ -3129,14 +3489,67 @@ Object.keys(types).forEach(function(typeName) {
 
 module.exports = getGlobalType;
 }).call(this,require("buffer").Buffer)
-},{"buffer":4}],10:[function(require,module,exports){
+},{"buffer":4}],11:[function(require,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"buffer":4,"dup":10}],12:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, '__esModule', { value: true });
+
+var _hasOwnProperty = Object.prototype.hasOwnProperty;
+var _propertyIsEnumerable = Object.prototype.propertyIsEnumerable;
+
+function hasOwnProperty(obj, key) {
+  return _hasOwnProperty.call(obj, key);
+}
+
+function propertyIsEnumerable(obj, key) {
+  return _propertyIsEnumerable.call(obj, key);
+}
+
+function merge(a, b) {
+  if (a && b) {
+    for (var key in b) {
+      a[key] = b[key];
+    }
+  }
+  return a;
+}
+
+function isIterator(obj) {
+  if (!obj) {
+    return false;
+  }
+
+  if (obj.__shouldIterator__) {
+    return true;
+  }
+
+  return typeof obj.next === 'function' &&
+    typeof Symbol === 'function' &&
+    typeof Symbol.iterator === 'symbol' &&
+    typeof obj[Symbol.iterator] === 'function' &&
+    obj[Symbol.iterator]() === obj;
+}
+
+//TODO find better way
+function isGeneratorFunction(f) {
+  return typeof f === 'function' && /^function\s*\*\s*/.test(f.toString());
+}
+
+exports.hasOwnProperty = hasOwnProperty;
+exports.propertyIsEnumerable = propertyIsEnumerable;
+exports.merge = merge;
+exports.isIterator = isIterator;
+exports.isGeneratorFunction = isGeneratorFunction;
+},{}],13:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],11:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3726,7 +4139,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":10,"_process":8,"inherits":6}],12:[function(require,module,exports){
+},{"./support/isBuffer":13,"_process":8,"inherits":6}],15:[function(require,module,exports){
 (function (Buffer){
 /*eslint-env mocha*/
 
@@ -3812,13 +4225,15 @@ var getter = Object.create(null, {
   a: {
     get: function() {
       return 'aaa';
-    }
+    },
+    enumerable: true
   }
 });
 var setter = Object.create(null, {
   b: {
     set: function() {
-    }
+    },
+    enumerable: true
   }
 });
 var getterAndSetter = Object.create(null, {
@@ -3827,7 +4242,8 @@ var getterAndSetter = Object.create(null, {
       return 'ccc';
     },
     set: function() {
-    }
+    },
+    enumerable: true
   }
 });
 
@@ -3866,6 +4282,12 @@ it('should format arguments', function() {
 
 it('should format arrays', function() {
   assert.equal(format([1, 2, 'abc']), 'Array [ 1, 2, \'abc\' ]');
+  var arr = [1, 2, 'abc', 3, 4, 5, 6, 7, 8, 9, 19];
+  assert.equal(format(arr), 'Array [ 1, 2, \'abc\', 3, 4, 5, 6, 7, 8, 9, 19 ]');
+  arr.a = 10;
+  arr.aa = 10;
+  arr.bb = 1;
+  assert.equal(format(arr), 'Array [ 1, 2, \'abc\', 3, 4, 5, 6, 7, 8, 9, 19, a: 10, aa: 10, bb: 1 ]');
 });
 
 it('should format node buffer', function() {
@@ -3928,15 +4350,19 @@ it('should format map', function() {
     assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]])),
       'Map { 1 => 2, 2 => \'abc\', Object { a: 10 } => Set {}, \'abc\' => null }');
     assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]]), { maxLineLength: 10 }),
-      'Map {\n  1 => 2,\n  2 => \'abc\',\n  Object { a: 10 } =>\n  Set {},\n  \'abc\' =>\n  null\n}');
+      'Map {\n  1 => 2,\n  2 => \'abc\',\n  Object { a: 10 } => Set {},\n  \'abc\' => null\n}');
   }
 });
 
 it('should format SIMD vectors', function() {
   if(typeof SIMD !== 'undefined') {
-    assert.equal(SIMD.Bool8x16(), '');
+    assert.equal(format(SIMD.Bool8x16()), 'Bool8x16 [\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false\n]');
   }
-})
+});
+
+it('should format date', function() {
+  assert.equal(format(new Date(1990, 2, 3, 2, 2, 2, 2), { isUTCdate: true }), '1990-03-02 23:02:02.002');
+});
 
 }).call(this,require("buffer").Buffer)
-},{"../":1,"assert":2,"buffer":4}]},{},[12]);
+},{"../":1,"assert":2,"buffer":4}]},{},[15]);
