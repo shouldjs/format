@@ -25,6 +25,8 @@
   "license": "MIT",
   "devDependencies": {
     "browserify": "latest",
+    "eslint": "^3.2.2",
+    "eslint-config-shouldjs": "^1.0.2",
     "mocha": "latest",
     "mocha-better-spec-reporter": "latest",
     "rollup": "0.34.1"
