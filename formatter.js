@@ -56,7 +56,7 @@ Formatter.prototype = {
   format: function(value) {
     var tp = t(value);
 
-    if (tp.type === t.OBJECT && this.alreadySeen(value)) {
+    if (this.alreadySeen(value)) {
       return '[Circular]';
     }
 

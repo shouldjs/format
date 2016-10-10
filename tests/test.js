@@ -212,11 +212,26 @@ it('should format map', function() {
 });
 
 it('should format SIMD vectors', function() {
-  if(typeof SIMD !== 'undefined') {
+  if (typeof SIMD !== 'undefined') {
     assert.equal(format(SIMD.Bool8x16()), 'Bool8x16 [\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false,\n  false\n]');
   }
 });
 
 it('should format date', function() {
   assert.equal(format(new Date(1990, 2, 3, 2, 2, 2, 2), { isUTCdate: true }), '1990-03-02 23:02:02.002');
+});
+
+it.only('should format recursive values', function() {
+  var req = {
+    a: 10,
+    b: 'abc'
+  };
+
+  req.req = req;
+  assert.equal(format(req), 'Object { a: 10, b: \'abc\', req: [Circular] }');
+
+  var f = function() {};
+  f.f = f;
+
+  assert.equal(format(f), 'Function { f: [Circular], name: \'f\' }');
 });
