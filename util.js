@@ -36,11 +36,13 @@ export function functionName(f) {
   if (f.name) {
     return f.name;
   }
+
   var matches = f.toString().match(functionNameRE);
   if (matches === null) {
     // `functionNameRE` doesn't match arrow functions.
     return '';
   }
+
   var name = matches[1];
   return name;
 }

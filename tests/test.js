@@ -33,10 +33,10 @@ it('should format boolean', function() {
 });
 
 it('should format Symbols', function() {
-  if(typeof Symbol != 'undefined' && Symbol.for) {
-    assert.equal(format(Symbol.for('react.element')), 'Symbol(react.element)')
+  if (typeof Symbol != 'undefined' && Symbol.for) {
+    assert.equal(format(Symbol.for('react.element')), 'Symbol(react.element)');
   }
-})
+});
 
 it('should format primitive wrappers', function() {
   assert.equal(format(new Number(10)), 'Number { [[PrimitiveValue]]: 10 }');
@@ -71,7 +71,8 @@ function fff() {
 it('should format function', function() {
   var f = function() {
   };
-  assert.equal(format(f), 'Function { name: \'\' }');
+
+  assert.equal(format(f), 'Function { name: \'f\' }');
 
   assert.equal(format(fff), 'Function { name: \'fff\' }');
 
@@ -148,16 +149,18 @@ it('should format arrays', function() {
 });
 
 it('should format node buffer', function() {
-  if(typeof Buffer !== 'undefined') {
+  if (typeof Buffer !== 'undefined') {
     var b = new Buffer('abc');
     assert.equal(format(b), 'Buffer [ 61, 62, 63 ]');
   }
 });
 
 it('should format typed arrays', function() {
-  if(typeof ArrayBuffer != 'undefined') {
+  if (typeof ArrayBuffer != 'undefined') {
     var buffer = new ArrayBuffer(8);
-    for(var i = 0; i < buffer.byteLength; i++) buffer[i] = 0x00;
+    for (var i = 0; i < buffer.byteLength; i++) {
+      buffer[i] = 0x00;
+    }
     buffer[1] = 0x20;
     buffer[2] = 0x2;
     assert.equal(format(buffer), 'ArrayBuffer [ 00, 20, 02, 00, 00, 00, 00, 00 ]');
@@ -178,7 +181,7 @@ it('should format typed arrays', function() {
 });
 
 it('should format html elements', function() {
-  if(typeof window != 'undefined' && typeof document != 'undefined') {
+  if (typeof window != 'undefined' && typeof document != 'undefined') {
     var btn = document.createElement("BUTTON");
     var t = document.createTextNode("CLICK ME");
     btn.appendChild(t);
@@ -194,7 +197,7 @@ it('should correctly indent', function() {
 });
 
 it('should format set', function() {
-  if(typeof Set !== 'undefined') {
+  if (typeof Set !== 'undefined') {
     assert.equal(format(new Set([1, 2, { a: 10}, 'abc'])),
       'Set { 1, 2, Object { a: 10 }, \'abc\' }');
     assert.equal(format(new Set([1, 2, { a: 10}, 'abc']), { maxLineLength: 0 }),
@@ -203,7 +206,7 @@ it('should format set', function() {
 });
 
 it('should format map', function() {
-  if(typeof Map !== 'undefined') {
+  if (typeof Map !== 'undefined') {
     assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]])),
       'Map { 1 => 2, 2 => \'abc\', Object { a: 10 } => Set {}, \'abc\' => null }');
     assert.equal(format(new Map([[1, 2], [2, 'abc'], [{ a: 10}, new Set()], ['abc', null]]), { maxLineLength: 10 }),
@@ -218,10 +221,10 @@ it('should format SIMD vectors', function() {
 });
 
 it('should format date', function() {
-  assert.equal(format(new Date(1990, 2, 3, 2, 2, 2, 2), { isUTCdate: true }), '1990-03-02 23:02:02.002');
+  assert.equal(format(new Date(1990, 2, 2, 2, 2, 2, 2), { isUTCdate: true }), '1990-03-02 02:02:02.002');
 });
 
-it.only('should format recursive values', function() {
+it('should format recursive values', function() {
   var req = {
     a: 10,
     b: 'abc'
