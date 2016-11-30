@@ -32,6 +32,7 @@ function formatPlainObjectValue(obj, key) {
 export function formatPlainObject(obj, opts) {
   opts = opts || {};
   opts.keyValueSep = ': ';
+  this.depth += 1;
   opts.formatKey = opts.formatKey || formatPlainObjectKey;
   opts.formatValue = opts.formatValue || function(value, key) {
     return formatPlainObjectValue.call(this, obj, key);

@@ -29,6 +29,7 @@ function genKeysFunc(f) {
 export function Formatter(opts) {
   opts = opts || {};
 
+  this.depth = 0;
   this.seen = [];
 
   var keysFunc;
@@ -46,6 +47,8 @@ export function Formatter(opts) {
   this.propSep = opts.propSep || ',';
 
   this.isUTCdate = !!opts.isUTCdate;
+
+  this.maxDepth = opts.maxDepth || 4;
 }
 
 
@@ -58,6 +61,10 @@ Formatter.prototype = {
 
     if (this.alreadySeen(value)) {
       return '[Circular]';
+    }
+
+    if (this.depth >= this.maxDepth) {
+      return Object.prototype.toString.call(value);
     }
 
     var tries = tp.toTryTypes();
